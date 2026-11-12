@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0b0d12">
+    <title>PKM Notes</title>
+    <script>
+        (() => {
+            let theme = 'dark';
+            try { theme = localStorage.getItem('theme') === 'light' ? 'light' : 'dark'; } catch {}
+            document.documentElement.dataset.theme = theme;
+            document.querySelector('meta[name="theme-color"]').content = theme === 'light' ? '#f3f5f8' : '#0b0d12';
+        })();
+    </script>
+    <link rel="preload" href="/vendor/inter/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/tokens.css">
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/vendor/highlight.js/highlight.min.js"></script>
+    <script type="module" src="/src/main.js"></script>
+</head>
+<body class="panel-open">
+    <aside class="activity-rail" aria-label="Navegação principal">
+        <button class="brand-mark" id="homeButton" type="button" aria-label="Mostrar todas as notas" title="Todas as notas">P</button>
+        <button class="rail-button is-active" type="button" data-panel="files" aria-label="Abrir pastas" title="Pastas">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v9a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><path d="M3.5 8.5v-2a2 2 0 0 1 2-2h3l2 2"/></svg>
+        </button>
+        <button class="rail-button backlinks-rail-button" id="backlinksButton" type="button" data-panel="backlinks" aria-label="Abrir backlinks" title="Backlinks">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13.5a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.7 1.7"/><path d="M14 10.5a4 4 0 0 0-5.7 0l-3 3A4 4 0 0 0 11 19.2l1.7-1.7"/></svg>
+            <span class="backlinks-count" id="backlinksCount" hidden></span>
+        </button>
+        <button class="rail-button" id="outlineButton" type="button" data-panel="outline" aria-label="Abrir sumário da nota" title="Sumário">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></svg>
+            <span class="backlinks-count" id="outlineCount" hidden></span>
+        </button>
+        <button class="rail-button" id="graphButton" type="button" aria-label="Abrir grafo de notas" title="Grafo de notas" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.2"/><circle cx="18" cy="7" r="2.2"/><circle cx="10" cy="18" r="2.2"/><path d="m8 6.3 7.8.4M7.3 8l2 7.8m7.2-6.7-5 7"/></svg>
+        </button>
+        <div class="rail-spacer"></div>
+        <button class="rail-button" id="themeToggle" type="button" aria-label="Alternar tema" title="Alternar tema">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg>
+        </button>
+        <button class="rail-button" id="settingsButton" type="button" data-panel="settings" aria-label="Abrir configurações" title="Configurações">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="m19.4 15 .1.1 1.4 1.1-1.4 2.4-1.7-.7a8 8 0 0 1-1.8 1l-.3 1.8h-2.8l-.3-1.8a8 8 0 0 1-1.8-1l-1.7.7-1.4-2.4 1.4-1.1a7 7 0 0 1 0-2l-1.4-1.1 1.4-2.4 1.7.7a8 8 0 0 1 1.8-1l.3-1.8h2.8l.3 1.8a8 8 0 0 1 1.8 1l1.7-.7 1.4 2.4-1.4 1.1a7 7 0 0 1 0 2Z"/></svg>
+        </button>
+    </aside>
+
+    <aside class="workspace-panel" id="workspacePanel" data-panel="files" aria-label="Pastas e notas">
+        <header class="panel-header">
+            <h2 id="panelTitle">Pastas e notas</h2>
+            <button class="icon-button" id="closePanel" type="button" aria-label="Recolher painel">×</button>
+        </header>
+        <div id="panelContent" class="panel-content"></div>
+    </aside>
+    <div class="workspace-panel-resizer" id="workspacePanelResizer" role="separator" aria-label="Redimensionar barra lateral" aria-orientation="vertical" aria-valuemin="220" aria-valuemax="640" aria-valuenow="280" aria-controls="workspacePanel" tabindex="0"></div>
+
+    <main class="main-content">
+        <header class="topbar">
+            <div class="topbar-title">
+                <span class="brand-dot" aria-hidden="true"></span>
+                <h1>PKM Notes</h1>
+                <span class="breadcrumb" id="currentFolder">Todas as notas</span>
+                <span class="editor-breadcrumb-separator" aria-hidden="true">/</span>
+                <label class="sr-only" for="noteTitle">Título da nota</label>
+                <input id="noteTitle" class="title-field" name="title" maxlength="256" placeholder="Título da nota" autocomplete="off">
+            </div>
+            <div class="topbar-actions">
+                <button class="button button-muted" id="exportBackup" type="button" title="Baixar um backup completo em .zip">Exportar</button>
+                <button class="button button-muted" id="importBackup" type="button" title="Restaurar um backup .zip substituindo os dados atuais">Importar</button>
+                <input id="backupInput" type="file" accept=".zip,application/zip" hidden>
+                <button class="button button-muted" id="logoutButton" type="button" hidden>Sair</button>
+                <button class="button button-primary" id="newNote" type="button"><span aria-hidden="true">＋</span> Nova nota</button>
+                <div class="topbar-editor-actions">
+                    <span id="saveStatus" class="save-status" aria-live="polite"></span>
+                    <button class="icon-button" id="historyButton" type="button" aria-label="Abrir histórico da nota" title="Histórico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/><path d="M12 7v5l3 2"/></svg></button>
+                    <button class="icon-button" id="attachmentsButton" type="button" aria-label="Abrir anexos" title="Anexos"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 12.5 7.1-7.1a3 3 0 0 1 4.2 4.2l-9.2 9.2a5 5 0 0 1-7.1-7.1l9.2-9.2"/></svg></button>
+                    <button class="icon-button danger-hover" id="deleteCurrentNote" type="button" aria-label="Excluir nota" title="Excluir nota" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M6 7l1 14h10l1-14M9 7V4h6v3"/></svg></button>
+                </div>
+            </div>
+        </header>
+
+        <div id="searchView">
+            <section class="search-area" aria-label="Pesquisa de notas">
+                <div class="search-box">
+                    <span class="search-symbol" aria-hidden="true">⌕</span>
+                    <input id="searchInput" type="search" autocomplete="off" placeholder="Pesquisar notas..." aria-label="Pesquisar notas">
+                    <span class="search-shortcut" aria-hidden="true">/</span>
+                </div>
+                <div class="search-toolbar">
+                    <div class="search-modes" role="group" aria-label="Modo de pesquisa">
+                        <button class="mode-button is-active" type="button" data-mode="title" aria-pressed="true">Títulos</button>
+                        <button class="mode-button" type="button" data-mode="content" aria-pressed="false">Conteúdo</button>
+                    </div>
+                    <div class="result-count" id="resultCount" aria-live="polite"></div>
+                </div>
+                <div class="tag-filter-bar" id="tagFilterBar" aria-label="Filtrar por tag" hidden></div>
+            </section>
+
+            <section class="results-section" aria-label="Resultados">
+                <div class="results-heading">
+                    <h2 id="resultsTitle">Todas as notas</h2>
+                    <button class="text-button" id="clearTag" type="button" hidden>Limpar tag</button>
+                    <button class="text-button" id="clearFolder" type="button" hidden>Limpar pasta</button>
+                </div>
+                <div id="notesList" class="notes-list" aria-live="polite"></div>
+                <nav class="pagination" id="pagination" aria-label="Paginação" hidden>
+                    <button class="button button-muted" id="previousPage" type="button">Anterior</button>
+                    <span id="pageStatus"></span>
+                    <button class="button button-muted" id="nextPage" type="button">Próxima</button>
+                </nav>
+            </section>
+        </div>
+
+        <section id="graphView" class="graph-view" aria-label="Grafo de notas" hidden>
+            <header class="graph-header">
+                <div>
+                    <h2>Grafo de notas</h2>
+                    <p id="graphSummary" aria-live="polite">Carregando relações…</p>
+                </div>
+                <div class="graph-actions">
+                    <label class="sr-only" for="graphSearch">Filtrar notas no grafo</label>
+                    <input id="graphSearch" type="search" placeholder="Filtrar notas..." autocomplete="off">
+                    <button class="button button-muted" id="fitGraph" type="button" title="Ajustar grafo à tela">Ajustar</button>
+                    <button class="button button-muted" id="closeGraph" type="button">Voltar</button>
+                </div>
+            </header>
+            <div class="graph-legend" aria-label="Tipos de relação">
+                <span><i class="graph-legend-line"></i>Link Markdown</span>
+                <span><i class="graph-legend-line is-wikilink"></i>Wikilink</span>
+                <span class="graph-hint">Arraste o fundo para mover, role para zoom e clique em uma nota para abri-la.</span>
+            </div>
+            <div class="graph-stage">
+                <svg id="noteGraph" class="graph-canvas" role="group" aria-label="Relações entre notas"></svg>
+            </div>
+        </section>
+
+        <section id="editorView" class="editor-view" aria-label="Editor de nota" hidden>
+            <div class="editor-toolbar">
+                <div class="markdown-tools" role="toolbar" aria-label="Formatação Markdown">
+                    <button type="button" data-action="undo" aria-label="Desfazer" title="Desfazer (Ctrl+Z)" disabled>↶</button>
+                    <button type="button" data-action="redo" aria-label="Refazer" title="Refazer (Ctrl+Y)" disabled>↷</button>
+                    <span class="toolbar-divider"></span>
+                    <button type="button" data-format="bold" aria-label="Negrito" title="Negrito (Ctrl+B)"><strong>B</strong></button>
+                    <button type="button" data-format="italic" aria-label="Itálico" title="Itálico (Ctrl+I)"><em>I</em></button>
+                    <button type="button" data-format="strike" aria-label="Tachado" title="Tachado">S</button>
+                    <span class="toolbar-divider"></span>
+                    <button type="button" data-format="heading" aria-label="Título" title="Título">H</button>
+                    <button type="button" data-format="link" aria-label="Link" title="Link">↗</button>
+                    <button type="button" data-format="code" aria-label="Código" title="Código">&lt;/&gt;</button>
+                    <button type="button" data-format="quote" aria-label="Citação" title="Citação">❞</button>
+                    <span class="toolbar-divider"></span>
+                    <button type="button" data-format="unordered" aria-label="Lista" title="Lista">•≡</button>
+                    <button type="button" data-format="ordered" aria-label="Lista numerada" title="Lista numerada">1≡</button>
+                    <button type="button" data-format="task" aria-label="Tarefa" title="Tarefa">☐</button>
+                    <button type="button" data-format="codeblock" aria-label="Bloco de código" title="Bloco de código">{ }</button>
+                    <button type="button" data-format="table" aria-label="Tabela" title="Tabela (Ctrl+Alt+T)">▦</button>
+                </div>
+                <div class="editor-toolbar-right">
+                    <div class="editor-modes" role="group" aria-label="Modo do editor">
+                        <button type="button" class="editor-mode" data-editor-mode="edit" aria-pressed="false">Edição</button>
+                        <button type="button" class="editor-mode is-active" data-editor-mode="split" aria-pressed="true">Dividido</button>
+                        <button type="button" class="editor-mode" data-editor-mode="preview" aria-pressed="false">Leitura</button>
+                    </div>
+                </div>
+            </div>
+            <div class="editor-workspace" data-editor-mode="split">
+                <section class="editor-pane edit-pane" aria-label="Edição Markdown">
+                    <div class="source-editor">
+                        <pre id="noteContentHighlight" class="source-highlight" aria-hidden="true"></pre>
+                        <textarea id="noteContent" name="content" spellcheck="false" aria-label="Conteúdo Markdown" aria-autocomplete="list" aria-controls="wikilinkAutocomplete" aria-expanded="false" placeholder="# Comece a escrever..."></textarea>
+                    </div>
+                </section>
+                <div class="editor-splitter" role="separator" aria-label="Redimensionar editor e pré-visualização" aria-orientation="vertical" aria-valuemin="20" aria-valuemax="80" aria-valuenow="50" tabindex="0"></div>
+                <section class="editor-pane preview-pane" aria-label="Pré-visualização">
+                    <article id="markdownPreview" class="markdown-preview"></article>
+                </section>
+            </div>
+        </section>
+        <dialog id="attachmentsDialog" class="attachments-dialog" aria-labelledby="attachmentsTitle">
+            <header class="attachments-dialog-header">
+                <h2 id="attachmentsTitle">Anexos</h2>
+                <button class="icon-button" id="closeAttachments" type="button" aria-label="Fechar anexos">×</button>
+            </header>
+            <ul id="attachmentList" class="attachment-list"></ul>
+            <p id="attachmentsEmpty" class="attachments-empty">Nenhum anexo nesta nota.</p>
+            <div class="attachments-dialog-actions">
+                <button class="button button-primary" id="addAttachment" type="button">Enviar arquivos</button>
+                <input id="attachmentInput" type="file" multiple hidden>
+            </div>
+        </dialog>
+        <dialog id="historyDialog" class="history-dialog" aria-labelledby="historyTitle">
+            <header class="history-dialog-header">
+                <h2 id="historyTitle">Histórico da nota</h2>
+                <button class="icon-button" id="closeHistory" type="button" aria-label="Fechar histórico">×</button>
+            </header>
+            <ul id="historyList" class="history-list"></ul>
+            <p id="historyEmpty" class="history-empty">Nenhuma versão anterior. O histórico começa na primeira edição.</p>
+        </dialog>
+        <div id="wikilinkAutocomplete" class="wikilink-autocomplete" role="listbox" aria-label="Notas para link" hidden></div>
+        <div id="appMessage" class="app-message" role="status" aria-live="polite"></div>
+    </main>
+</body>
+</html>
