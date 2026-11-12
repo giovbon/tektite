@@ -38,22 +38,27 @@ jobs:
         with:
           node-version: '18'
 
+      - name: Frontend dependencies
+        run: |
+          cd web/frontend
+          npm install --legacy-peer-deps
+        
       - name: Frontend tests
         run: |
-          npm ci --prefix web/frontend
           npm test --prefix web/frontend
 
       - name: Install Playwright browser
-        run: npx --prefix web/frontend playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium --prefix web/frontend
 
       - name: Frontend end-to-end tests
         run: npm run test:e2e --prefix web/frontend
 
       - name: Check generated frontend artifacts
         run: |
+          cd web/frontend
           bash build-js.sh
           bash build-tailwind.sh
-          if ! git diff --exit-code -- web/frontend/app.js web/frontend/app.js.map web/frontend/vendor/MANIFEST.json web/frontend/vendor/markmap/markmap.js web/frontend/vendor/markmap/markmap.js.LEGAL.txt web/frontend/vendor/markmap/THIRD_PARTY_NOTICES.txt web/frontend/tailwind.css; then
+          if ! git diff --exit-code -- app.js app.js.map vendor/MANIFEST.json vendor/markmap/markmap.js vendor/markmap/markmap.js.LEGAL.txt vendor/markmap/THIRD_PARTY_NOTICES.txt tailwind.css; then
             echo "::error::Generated frontend artifacts are stale. Run ./build-js.sh and ./build-tailwind.sh and commit the result."
             exit 1
           fi
