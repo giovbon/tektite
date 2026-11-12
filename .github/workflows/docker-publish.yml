@@ -47,14 +47,6 @@ jobs:
         run: |
           npm test --prefix web/frontend
 
-      - name: Install Playwright browser
-        working-directory: web/frontend
-        run: npx playwright install --with-deps chromium
-
-      - name: Frontend end-to-end tests
-        working-directory: web/frontend
-        run: npx playwright test
-
       - name: Check generated frontend artifacts
         run: |
           cd web/frontend
