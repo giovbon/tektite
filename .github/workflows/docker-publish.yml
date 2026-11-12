@@ -52,7 +52,8 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Frontend end-to-end tests
-        run: npm run test:e2e --prefix web/frontend
+        working-directory: web/frontend
+        run: npx playwright test
 
       - name: Check generated frontend artifacts
         run: |
