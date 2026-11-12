@@ -218,6 +218,7 @@ async function initialize() {
     }
     updateSplitRatio();
     if (window.matchMedia('(max-width: 700px)').matches) closePanel();
+    syncActiveRailButton();
     const initialListState = captureListState();
     const noteParam = new URLSearchParams(location.search).get('note');
     if (/^\d+$/.test(noteParam || '')) {
@@ -238,6 +239,11 @@ async function initialize() {
 function setupEventListeners() {
     document.querySelectorAll('.rail-button[data-panel]').forEach(button => {
         button.addEventListener('click', () => togglePanel(button.dataset.panel));
+    });
+    document.querySelectorAll('.rail-button, .brand-mark').forEach(button => {
+        button.addEventListener('pointerdown', () => { button.dataset.pointerFocus = ''; });
+        button.addEventListener('keydown', () => { delete button.dataset.pointerFocus; });
+        button.addEventListener('blur', () => { delete button.dataset.pointerFocus; });
     });
     document.addEventListener('click', event => {
         if (!document.body.classList.contains('panel-open')) return;
@@ -2250,6 +2256,13 @@ function setEditorMode(mode) {
     });
 }
 
+function syncActiveRailButton() {
+    const current = document.body.classList.contains('panel-open') ? elements.panel.dataset.panel : null;
+    document.querySelectorAll('.rail-button[data-panel]').forEach(button => {
+        button.classList.toggle('is-active', button.dataset.panel === current);
+    });
+}
+
 function togglePanel(name) {
     if (elements.panel.dataset.panel === name && document.body.classList.contains('panel-open')) {
         closePanel();
@@ -2257,7 +2270,7 @@ function togglePanel(name) {
     }
     elements.panel.dataset.panel = name;
     document.body.classList.add('panel-open');
-    document.querySelectorAll('.rail-button[data-panel]').forEach(button => button.classList.toggle('is-active', button.dataset.panel === name));
+    syncActiveRailButton();
     if (name === 'backlinks') {
         elements.panelTitle.textContent = 'Backlinks';
         renderBacklinksPanel();
@@ -2360,7 +2373,7 @@ function handleWorkspacePanelResizeKey(event) {
 
 function closePanel() {
     document.body.classList.remove('panel-open');
-    document.querySelectorAll('.rail-button[data-panel]').forEach(button => button.classList.remove('is-active'));
+    syncActiveRailButton();
 }
 
 async function loadBacklinks(noteID) {
@@ -2649,6 +2662,24 @@ function createTreeDocumentIcon(className) {
     return icon;
 }
 
+function createTreeFolderIcon(className) {
+    const namespace = 'http://www.w3.org/2000/svg';
+    const icon = document.createElementNS(namespace, 'svg');
+    icon.setAttribute('viewBox', '0 0 24 24');
+    icon.setAttribute('aria-hidden', 'true');
+    icon.classList.add(className);
+    for (const [className, pathData] of [
+        ['tree-folder-body', 'M3.5 6.5h6l2 2h9v9a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z'],
+        ['tree-folder-tab', 'M3.5 8.5v-2a2 2 0 0 1 2-2h3l2 2']
+    ]) {
+        const path = document.createElementNS(namespace, 'path');
+        path.setAttribute('d', pathData);
+        path.classList.add(className);
+        icon.append(path);
+    }
+    return icon;
+}
+
 function buildFolderNode(folder) {
     const item = document.createElement('li');
     item.className = 'tree-node';
@@ -2664,7 +2695,7 @@ function buildFolderNode(folder) {
     const label = document.createElement('span');
     label.className = 'tree-folder-label';
     label.textContent = folder.name;
-    select.append(createTreeDocumentIcon('tree-folder-icon'), label);
+    select.append(createTreeFolderIcon('tree-folder-icon'), label);
     row.dataset.dropFolder = folder.path;
     row.append(select);
     const actions = document.createElement('div');

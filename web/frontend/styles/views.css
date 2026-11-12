@@ -1073,13 +1073,26 @@
         }
 
         .workspace-panel {
-            inset: auto 0 60px;
-            width: 100%;
-            max-height: min(62vh, 500px);
-            border-right: 0;
-            border-top: 1px solid var(--border);
-            border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-            box-shadow: var(--shadow-panel-up);
+            inset: 0 auto 60px 0;
+            width: min(340px, 86vw);
+            max-height: none;
+            border-right: 1px solid var(--border);
+            border-top: 0;
+            border-radius: 0;
+            box-shadow: var(--shadow-lg);
+            animation: workspace-panel-slide-in var(--duration-normal) var(--ease-standard);
+        }
+
+        @keyframes workspace-panel-slide-in {
+            from {
+                transform: translateX(-100%);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
         }
 
         .workspace-panel-resizer {
