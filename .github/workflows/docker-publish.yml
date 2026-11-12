@@ -13,9 +13,23 @@ on:
       - master
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # O namespace da imagem PRECISA ser o mesmo da conta dona do DOCKERHUB_TOKEN.
+  # Usar o secret evita o erro "insufficient_scope" causado por publicar em um
+  # namespace diferente do usuário autenticado (ex.: giovoni x giovbon).
+  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/tektite
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repository
@@ -24,23 +38,25 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
-          go-version: '1.21'
+          go-version-file: go.mod
           cache: true
 
       - name: Go vet
-        run: go vet ./...
+        run: go vet -tags "sqlite_fts5 sqlite_omit_load_extension" ./...
 
       - name: Go test
-        run: go test -tags sqlite_fts5 ./...
+        run: go test -tags "sqlite_fts5 sqlite_omit_load_extension" ./...
 
       - name: Set up Node
         uses: actions/setup-node@v7
         with:
-          node-version: '18'
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/frontend/package-lock.json
 
       - name: Frontend dependencies
         working-directory: web/frontend
-        run: npm install --legacy-peer-deps
+        run: npm ci
 
       - name: Frontend tests
         working-directory: web/frontend
@@ -54,64 +70,81 @@ jobs:
     needs: test
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 90
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Set up Go
-        uses: actions/setup-go@v7
-        with:
-          go-version: '1.21'
-          cache: true
-
-      - name: Install C cross-compilers for SQLite
+      - name: Validate Docker Hub credentials
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+          set -euo pipefail
 
-      - name: Build Multi-Arch Binaries
-        run: |
-          mkdir -p bin
-          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 CC=gcc \
-            go build -trimpath -tags "sqlite_fts5 sqlite_omit_load_extension" \
-            -ldflags="-s -w -linkmode external -extldflags '-static'" \
-            -o bin/pkm-notes-backend-amd64 ./backend
-          CGO_ENABLED=1 GOOS=linux GOARCH=arm64 CC=aarch64-linux-gnu-gcc \
-            go build -trimpath -tags "sqlite_fts5 sqlite_omit_load_extension" \
-            -ldflags="-s -w -linkmode external -extldflags '-static'" \
-            -o bin/pkm-notes-backend-arm64 ./backend
-          ls -lh bin/
-          # Fail the workflow if any artifact is not an ELF binary
-          for f in bin/pkm-notes-backend-*; do
-            head -c 4 "$f" | grep -q ELF || { echo "ERROR: $f is not an ELF binary"; exit 1; }
-          done
+          if [[ -z "${DOCKERHUB_USERNAME}" || -z "${DOCKERHUB_TOKEN}" ]]; then
+            echo "::error::Defina os secrets DOCKERHUB_USERNAME e DOCKERHUB_TOKEN (Access Token com Read & Write)."
+            exit 1
+          fi
+
+          # Pede um token com escopo de push e confere o que o Docker Hub concedeu.
+          # Token somente leitura gera exatamente o erro "insufficient_scope".
+          if ! token_json=$(curl -fsS -u "${DOCKERHUB_USERNAME}:${DOCKERHUB_TOKEN}" \
+            "https://auth.docker.io/token?service=registry.docker.io&scope=repository:${DOCKERHUB_USERNAME}/tektite:push,pull"); then
+            echo "::error::Falha ao autenticar no Docker Hub. Verifique DOCKERHUB_USERNAME e DOCKERHUB_TOKEN."
+            exit 1
+          fi
+
+          jwt=$(printf '%s' "${token_json}" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+
+          python3 - "${jwt}" <<'PY'
+          import base64
+          import json
+          import sys
+
+          payload = sys.argv[1].split(".")[1]
+          payload += "=" * (-len(payload) % 4)
+          claims = json.loads(base64.urlsafe_b64decode(payload))
+          actions = {a for entry in claims.get("access", []) for a in entry.get("actions", [])}
+
+          if "push" not in actions:
+              sys.exit(
+                  "::error::O DOCKERHUB_TOKEN não tem permissão de escrita. "
+                  "Gere um Access Token com Read & Write em "
+                  "https://hub.docker.com/settings/security e atualize o secret."
+              )
+
+          print("Credenciais OK: token com permissão de push.")
+          PY
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Extract Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
-          images: giovoni/tektite
+          images: ${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
+            type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha,format=short
 
+      # O Dockerfile compila o backend com cgo para cada plataforma.
+      # O arm64 é emulado via QEMU, por isso o setup acima.
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile

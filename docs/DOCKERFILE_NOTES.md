@@ -34,7 +34,7 @@ Script de automação para construir e pushar para Docker Hub:
 
 - **Multi-arquitetura**: Constrói tanto para amd64 quanto arm64
 - **Arquitetura específica**: Especialmente foca em arm64 como solicitado
-- **Push para Docker Hub**: Pusha imagens para `giovoni/pkm-notes`
+- **Push para Docker Hub**: Pusha imagens para `giovbon/tektite`
 - **Manifesto multi-arquitetura**: Cria manifesto que roda em múltiplas arquiteturas
 - **Verificações**: Inclui checagens para Docker, login do Docker Hub e validação
 
@@ -65,11 +65,11 @@ DOCKERFILE_PATH=/mnt/c/Users/Giovani/Desktop/projeto-pkm-main
 docker buildx build --platform linux/arm64 \
   --build-arg TARGETOS=linux \
   --build-arg TARGETARCH=arm64 \
-  --tag giovoni/pkm-notes:latest \
+  --tag giovbon/tektite:latest \
   --output type=docker \
   "$DOCKERFILE_PATH"
 
-docker push giovoni/pkm-notes:latest
+docker push giovbon/tektite:latest
 ```
 
 ### Documentação de referência do Dockerfile (inspirada no basalt)

@@ -1,0 +1,15 @@
+# Controle de versão e CI não entram na imagem
+.git
+.github
+.gitignore
+
+# Artefatos de build locais
+bin/
+*.test
+
+# Dados locais do usuário (nunca devem ir para a imagem)
+data/
+attachments/
+
+# Dependências instaladas no host
+web/frontend/node_modules/

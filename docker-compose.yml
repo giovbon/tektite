@@ -1,7 +1,7 @@
 services:
   pkm-notes:
     # Para usar a imagem publicada no Docker Hub:
-    # image: giovoni/pkm-notes:latest
+    # image: giovbon/tektite:latest
     # Ou para compilar localmente:
     build:
       context: .

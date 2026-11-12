@@ -1,211 +1,98 @@
-# GitHub Actions Workflows for PKM Notes
+# GitHub Actions: CI e publicação no Docker Hub
 
-Este diretório contém configurações de workflows do GitHub Actions para CI/CD do PKM Notes.
+O workflow fica em `.github/workflows/docker-publish.yml` e tem dois jobs:
+`test` e `build-and-push`.
 
-## Workflows
+## Job `test`
 
-### 1. docker-publish.yml
-Um workflow completo que:
+Roda em todo push e pull request:
 
-- **Executa testes CI** antes de qualquer build
-  - Verifica código Go (`go vet`, `go test`)
-  - Executa testes de frontend (unitários e E2E)
-  - Valida artefatos frontend gerados
+- `go vet` e `go test` com as tags `sqlite_fts5 sqlite_omit_load_extension`;
+- `npm ci` e `npm test` em `web/frontend`;
+- `npm run build --if-present` (no-op enquanto não houver script `build`).
 
-- **Constrói binários multi-arquitetura**
-  - `amd64` (x86_64) - para clouds comuns e desktop
-  - `arm64` (ARM64) - para Apple Silicon, Raspberry Pi, etc.
-  - Valida ELF (Executable and Linkable Format) para cada binário
+O Go é instalado a partir da versão declarada em `go.mod` (`go-version-file`).
 
-- **Faz push para Docker Hub**
-  - Usa Docker Buildx para multi-plataforma
-  - Constrói imagem Docker para ambas arquiteturas
-  - Faz push para `giovoni/pkm-notes` no Docker Hub
-  - Usa tags semver, latest, e hash SHA
+## Job `build-and-push`
 
-- **Cache de builds** para速度更快的 construções subsequentes
+Roda só em push para `main`/`master`, tags `v*.*.*` ou execução manual
+(`workflow_dispatch`). Pull requests não publicam imagem.
 
-## Configuração
+Passos principais:
 
-### Secrets Requeridos
+1. Valida os secrets do Docker Hub e confere se o token realmente tem
+   permissão de `push` (um token Read-only gera `insufficient_scope`).
+2. Configura QEMU + Buildx.
+3. Faz login no Docker Hub.
+4. Gera as tags com `docker/metadata-action`.
+5. Compila e publica `linux/amd64` e `linux/arm64` com `docker/build-push-action`.
 
-Adicione estes secrets à sua conta GitHub:
+O Dockerfile compila o backend com cgo (`go-sqlite3` não funciona com
+`CGO_ENABLED=0`). Em builds multi-arquitetura o arm64 é emulado via QEMU, por
+isso o QEMU é configurado antes do build.
 
-1. **DOCKERHUB_USERNAME** - Seu username do Docker Hub
-2. **DOCKERHUB_TOKEN** - Token de acesso com permissão para push/push (recomendado)
+## Secrets necessários
 
-### Gatilhos de Workflow
+Em **Settings → Secrets and variables → Actions**:
 
-- **Push para branches main/master**
-- **Tags que seguem semver** (`v1.2.3`, etc.)
-- **Pull requests** (apenas para testes)
-- **Execução manual** via interface do GitHub Actions
+| Secret | Valor |
+| --- | --- |
+| `DOCKERHUB_USERNAME` | usuário do Docker Hub (ex.: `giovbon`) |
+| `DOCKERHUB_TOKEN` | Access Token com permissão **Read & Write** |
 
-### Outputs de Imagem
+Crie o token em <https://hub.docker.com/settings/security>. Tokens do tipo
+Read-only fazem o login funcionar, mas o push falha com
+`insufficient_scope: authorization failed`.
 
-O workflow produz as seguintes tags de imagem:
+O namespace da imagem é montado como
+`${{ secrets.DOCKERHUB_USERNAME }}/tektite`, então ele sempre coincide com a
+conta dona do token. Se você trocar de conta, basta atualizar o secret — não é
+preciso editar o workflow.
 
-- `giovoni/pkm-notes:latest` (apenas para main/master)
-- `giovoni/pkm-notes:v1.2.3` (para tags semanticas)
-- `giovoni/pkm-notes:1.2` (para tags major.minor)
-- `giovoni/pkm-notes:<sha>` (hash curto)
+## Tags publicadas
 
-## Como Configurar
+- `latest` — apenas no branch padrão (`main`);
+- `v1.2.3` — em tags semver;
+- `1.2` — major.minor em tags semver;
+- `<sha-curto>` — em todo build publicado.
 
-### 1. Adicione Secrets
+## Rodando o build localmente
 
-```bash
-# No GitHub UI:
-# Settings > Secrets and variables > Actions
-# Adicione:
-DOCKERHUB_USERNAME=giovoni
-DOCKERHUB_TOKEN=seu_token_aqui
-```
-
-### 2. Configure Repositório
+O Dockerfile é autossuficiente:
 
 ```bash
-# Certifique-se de que seu repository tem:
-- Arquivo .gitignore
-- Arquivo README.md
-- Arquivo Dockerfile
-- Arquivo docker-compose.yml
-```
+docker build -t tektite:local .
 
-### 3. Workflow Dispatch (Opcional)
-
-Você pode executar manualmente:
-1. Vá para Actions tab
-2. Encontre "CI and Docker publish"
-3. Clique em "Run workflow"
-4. Escolha o branch/tag
-
-## Hospedar no Docker Hub
-
-### Configuração do GitHub Container Registry (Alternativa)
-
-Se preferir o GitHub Container Registry:
-
-```yaml
-# Modifique o step de login
-- name: Log in to GitHub Container Registry
-  uses: docker/login-action@v3
-  with:
-    registry: ghcr.io
-    username: ${{ github.actor }}
-    password: ${{ secrets.GITHUB_TOKEN }}
-
-# Modifique os tags de destino
-images: ghcr.io/${{ github.repository }}/pkm-notes
-```
-
-## Fluxo de Trabalho Completo
-
-1. **Push para main**:
-   - Executa toda a suíte de testes
-   - Constrói binários multi-arquitetura
-   - Faz push para `giovoni/pkm-notes:latest`
-
-2. **Push para tag semver** (`v1.2.3`):
-   - Executa testes
-   - Faz push para `giovoni/pkm-notes:v1.2.3`
-   - Faz push para `giovoni/pkm-notes:1.2`
-
-3. **Pull requests**:
-   - Apenas testes, sem push de Docker
-
-## Manutenção
-
-### Atualizar Versão Go
-
-```yaml
-# Em docker-publish.yml
-- name: Set up Go
-  uses: actions/setup-go@v7
-  with:
-    go-version: '1.22'  # Atualize conforme necessário
-    cache: true
-```
-
-### Adicionar Mais Arquiteturas
-
-```yaml
-# No step "Build Multi-Arch Binaries"
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ...
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build ...
-CGO_ENABLED=0 GOOS=linux GOARCH=s390x go build ...  # Exemplo adicional
-```
-
-### Otimizações de Cache
-
-- Cache go.mod, go.sum, node_modules
-- Cache Docker layers usando GitHub Actions cache
-- Cache de binários compilados
-
-## Testes Locais vs GitHub Actions
-
-### Executar Testes Localmente
-
-```bash
-# Clone repository
-# Execute testes Go
-
-go test ./backend/...
-
-# Execute testes frontend (requer Node.js)
-npm ci --prefix web/frontend
-npm test --prefix web/frontend
-
-# Execute testes E2E (requer Playwright)
-npx playwright install
-npm run test:e2e --prefix web/frontend
-```
-
-### Executar Build de Docker Localmente
-
-```bash
-# Para simular GitHub Actions
-mkdir -p bin
-go mod download
-
-# Build de binários multi-arquitetura
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o bin/pkm-notes-backend-amd64 ./backend
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o bin/pkm-notes-backend-arm64 ./backend
-
-# Build de Docker
-DOCKER_BUILDKIT=1 docker buildx build --platform linux/amd64,linux/arm64 .
-```
-
-## Problemas e Soluções
-
-### "Failed to resolve platform"
-
-```bash
-# Instale QEMU para construção multi-arquitetura
+# Multi-arquitetura (requer QEMU/binfmt no host)
 docker run --privileged --rm tonistiigi/binfmt --install all
+docker buildx build --platform linux/amd64,linux/arm64 -t tektite:local .
 ```
 
-### "Push para Docker Hub falhou"
+Ou use o script, que já publica o manifesto:
 
 ```bash
-# Verifique secrets e permissions
 docker login
-docker push giovoni/pkm-notes:latest
+DOCKERHUB_USERNAME=giovbon ./build-and-push.sh
 ```
 
-### "Timeouts de build"
+## Problemas comuns
 
-```yaml
-# Adicione timeout no job de build-and-push
-- name: Build and push Docker image
-  uses: docker/build-push-action@v5
-  with:
-    timeout: 60m  # Adicione se necessário
+### `insufficient_scope: authorization failed`
+
+1. Confirme que `DOCKERHUB_USERNAME` é a conta dona do token.
+2. Gere um novo Access Token com **Read & Write** e atualize `DOCKERHUB_TOKEN`.
+3. Rode o workflow de novo: o passo "Validate Docker Hub credentials" mostra o
+   erro antes de perder tempo compilando.
+
+### `exec format error` no build arm64
+
+Registre os emuladores no host:
+
+```bash
+docker run --privileged --rm tonistiigi/binfmt --install arm64
 ```
 
-## Resources
+### `go-sqlite3 requires cgo`
 
-- [GitHub Actions Documentation](https://docs.github.com/en/actions)
-- [Docker Buildx Documentation](https://docs.docker.com/buildx/working-with-buildx/)
-- [Docker Hub Best Practices](https://docs.docker.com/engine/reference/commandline/hub/)
-- [Multi-Arch Docker Images](https://docs.docker.com/docker-hub/architecture/
+O backend precisa ser compilado com `CGO_ENABLED=1`. Não compile com
+`CGO_ENABLED=0`: o binário gera erro em runtime ao abrir o SQLite.

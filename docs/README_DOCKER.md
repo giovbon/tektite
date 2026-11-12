@@ -82,17 +82,19 @@ docker compose down
 ### Testar Localmente Antes de Push
 
 ```bash
-# Construir binários para teste
-mkdir -p bin
+# O go-sqlite3 exige cgo: CGO_ENABLED=0 gera um binário que falha em runtime.
 go mod download
+CGO_ENABLED=1 go build -tags "sqlite_fts5 sqlite_omit_load_extension" -o bin/pkm-notes-backend ./backend
 
-# Construir para ambas arquiteturas
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o bin/pkm-notes-backend-amd64 ./backend
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o bin/pkm-notes-backend-arm64 ./backend
+# Testar o binário
+./bin/pkm-notes-backend --help
+```
 
-# Testar binários
-./bin/pkm-notes-backend-amd64 --help
-./bin/pkm-notes-backend-arm64 --help
+Para testar o build multi-arquitetura completo, use o Dockerfile (ele compila
+com cgo para a plataforma de destino):
+
+```bash
+docker buildx build --platform linux/amd64,linux/arm64 -t tektite:local .
 ```
 
 ## Configuração GitHub Actions
@@ -116,10 +118,10 @@ Configure estes secrets no seu repositório GitHub:
 O workflow produz:
 
 ```
-giovoni/pkm-notes:latest      # main/master branches
-giovoni/pkm-notes:v1.2.3      # semantica tags
-giovoni/pkm-notes:1.2         # major.minor tags
-giovoni/pkm-notes:<sha>       # hash curto
+giovbon/tektite:latest      # main/master branches
+giovbon/tektite:v1.2.3      # semantica tags
+giovbon/tektite:1.2         # major.minor tags
+giovbon/tektite:<sha>       # hash curto
 ```
 
 ## Arquitetura
@@ -127,24 +129,23 @@ giovoni/pkm-notes:<sha>       # hash curto
 ### Multi-estágio
 
 1. **Stage 1 (Builder)**: Go 1.21-alpine
-   - Instala certificados CA, tzdata, git
+   - Instala certificados CA, tzdata, gcc e musl-dev
    - Baixa dependências Go
-   - Compila binário otimizado
+   - Compila binário estático com `CGO_ENABLED=1` (necessário para o SQLite)
 
 2. **Stage 2 (Runtime)**: Alpine 3.20
    - Minimal, focado em segurança
    - Usuário não-privilegiado `appuser`
-   - Binário copiado do stage anterior
+   - Binário e frontend (`web/frontend`) copiados do stage anterior
 
 ### Multi-arquitetura
 
 ```dockerfile
-FROM --platform=$BUILDPLATFORM golang:1.21-alpine AS builder
-# Constrói para TARGETARCH detectado automaticamente
-
-# Build para amd64 e arm64:
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/pkm-notes-backend-amd64
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o bin/pkm-notes-backend-arm64
+FROM golang:1.21-alpine AS builder
+# O stage roda na plataforma de destino (arm64 via QEMU no CI), pois o cgo
+# precisa de um compilador nativo.
+CGO_ENABLED=1 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+  go build -tags "sqlite_fts5 sqlite_omit_load_extension" -o /pkm-notes-backend ./backend
 ```
 
 ## Baseado em Referência (Basalt)
@@ -155,7 +156,7 @@ Este setup é baseado no projeto basalt com adaptações:
 |---------------|--------|-----------|
 | Nome do Binário | `basalt` | `pkm-notes-backend` |
 | Pacote Principal | `./cmd/basalt` | `./backend` |
-| Imagem Docker | `giovoni/basalt` | `giovoni/pkm-notes` |
+| Imagem Docker | `giovbon/tektite` | `giovbon/tektite` |
 | Database | SQLite integrado | SQLite integrado |
 | Frontend | Vite + Tailwind | Go Serve + Static |
 
@@ -182,12 +183,12 @@ docker login
 docker buildx build --platform linux/arm64 \
   --build-arg TARGETOS=linux \
   --build-arg TARGETARCH=arm64 \
-  --tag giovoni/pkm-notes:test \
+  --tag giovbon/tektite:test \
   .
 
 # Construir multi-arquitetura
 docker buildx build --platform linux/amd64,linux/arm64 \
-  --tag giovoni/pkm-notes:test \
+  --tag giovbon/tektite:test \
   .
 ```
 

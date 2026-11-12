@@ -1,43 +1,47 @@
 # syntax=docker/dockerfile:1
 
 # -----------------------------------------------------------------------------
-# Stage 1: Build (usa binário pré-compilado se existir, ou compila nativamente)
+# Stage 1: Build
 # -----------------------------------------------------------------------------
-FROM --platform=$BUILDPLATFORM golang:1.21-alpine AS builder
+# O driver go-sqlite3 usa cgo, então NÃO dá para compilar com CGO_ENABLED=0
+# (o binário resultante falha em runtime com "go-sqlite3 requires cgo").
+# Também não fixamos --platform=$BUILDPLATFORM: o stage precisa rodar na
+# arquitetura de destino para que o cgo use o compilador nativo. Em builds
+# multi-arquitetura o arm64 roda via QEMU (o workflow configura o QEMU).
+FROM golang:1.21-alpine AS builder
 
 WORKDIR /src
 
-ENV GOTOOLCHAIN=auto
-
-# Definido linux como padrão para TARGETOS
 ARG TARGETOS=linux
 ARG TARGETARCH
 
-RUN apk add --no-cache ca-certificates tzdata git
+# gcc + musl-dev são obrigatórios para compilar o SQLite via cgo.
+RUN apk add --no-cache ca-certificates tzdata gcc musl-dev
 
 COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
 
-# 1. Compilar para múltiplas arquiteturas, suportando arm64 (ARM 64-bit)
-RUN set -e; \
+RUN set -eux; \
     ARCH="${TARGETARCH:-$(go env GOARCH)}"; \
-    echo "Compilando nativamente para ${TARGETOS:-linux}/${ARCH} com SQLite FTS5"; \
-    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${ARCH} go build \
+    OS="${TARGETOS:-linux}"; \
+    echo "Compilando ${OS}/${ARCH} com cgo e SQLite FTS5"; \
+    CGO_ENABLED=1 GOOS="${OS}" GOARCH="${ARCH}" \
+    go build \
         -trimpath \
-        -ldflags="-s -w" \
-        -tags sqlite_fts5 \
+        -ldflags="-s -w -linkmode external -extldflags '-static'" \
+        -tags "sqlite_fts5 sqlite_omit_load_extension" \
         -o /pkm-notes-backend ./backend; \
-    if ! head -c 4 /pkm-notes-backend | grep -q "ELF"; then \
-        echo "ERRO: /pkm-notes-backend nao e um executavel ELF."; \
-        echo "O pacote main nao foi compilado - verifique o caminho ./backend no Dockerfile."; \
+    head -c 4 /pkm-notes-backend | grep -q ELF || { \
+        echo "ERRO: /pkm-notes-backend não é um executável ELF."; \
+        echo "Verifique se o pacote main está em ./backend."; \
         exit 1; \
-    fi; \
-    echo "OK: binario ELF gerado para ${TARGETOS:-linux}/${ARCH} com SQLite FTS5"
+    }; \
+    echo "OK: binário estático ELF gerado para ${OS}/${ARCH}"
 
 # -----------------------------------------------------------------------------
-# Stage 2: Runtime Minimal
+# Stage 2: Runtime minimal
 # -----------------------------------------------------------------------------
 FROM alpine:3.20
 
@@ -48,6 +52,8 @@ RUN apk add --no-cache ca-certificates tzdata && \
 WORKDIR /app
 
 COPY --from=builder /pkm-notes-backend /app/pkm-notes-backend
+# O backend serve a UI a partir de ./web/frontend (relativo ao WORKDIR).
+COPY --from=builder /src/web/frontend /app/web/frontend
 
 # Configurar permissões
 RUN chmod +x /app/pkm-notes-backend && \
@@ -62,5 +68,9 @@ ENV PORT=8000 \
     NOTES_DIR=/app/data
 
 VOLUME ["/app/data"]
+
+# /api/health é público (não exige autenticação) e faz ping no SQLite.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget -qO- "http://127.0.0.1:${PORT}/api/health" >/dev/null 2>&1 || exit 1
 
 ENTRYPOINT ["/app/pkm-notes-backend"]
