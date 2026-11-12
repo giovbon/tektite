@@ -29,10 +29,10 @@ const state = {
     backlinksRequestID: 0,
     outline: [],
     pendingOutlineLine: null,
+    pendingBacklink: null,
     noteID: null,
     noteFolder: '',
     noteVersion: null,
-    historyRequestID: 0,
     frontmatterExpanded: false,
     savedDraft: null,
     listState: null,
@@ -83,10 +83,6 @@ const elements = {
     wikilinkAutocomplete: document.querySelector('#wikilinkAutocomplete'),
     attachmentsDialog: document.querySelector('#attachmentsDialog'),
     attachmentsButton: document.querySelector('#attachmentsButton'),
-    historyDialog: document.querySelector('#historyDialog'),
-    historyList: document.querySelector('#historyList'),
-    historyEmpty: document.querySelector('#historyEmpty'),
-    historyButton: document.querySelector('#historyButton'),
     attachmentInput: document.querySelector('#attachmentInput'),
     attachmentList: document.querySelector('#attachmentList'),
     attachmentsEmpty: document.querySelector('#attachmentsEmpty'),
@@ -123,6 +119,7 @@ let editorLinePositionCache = null;
 let scrollSyncFrame = 0;
 let pendingScrollSource = null;
 let programmaticScroll = null;
+let scrollSyncSuspendedUntil = 0;
 const markdownEditor = new MarkdownEditor(elements.noteContent, () => {
     syncMarkdownHighlight();
     syncPreviewMinimumHeight();
@@ -286,8 +283,6 @@ function setupEventListeners() {
         elements.attachmentsDialog.showModal();
         if (state.noteID !== null) void loadAttachments(state.noteID);
     });
-    elements.historyButton.addEventListener('click', () => void openHistory());
-    document.querySelector('#closeHistory').addEventListener('click', () => elements.historyDialog.close());
     document.querySelector('#closeAttachments').addEventListener('click', () => elements.attachmentsDialog.close());
     elements.attachmentsDialog.addEventListener('click', event => {
         if (event.target === elements.attachmentsDialog) elements.attachmentsDialog.close();
@@ -527,6 +522,7 @@ async function openGraphView() {
     }
     if (state.view !== 'list') return;
     state.graphVisible = true;
+    document.body.classList.add('is-graph-view');
     elements.searchView.hidden = true;
     elements.graphView.hidden = false;
     const graphButton = document.querySelector('#graphButton');
@@ -564,6 +560,7 @@ function closeGraphView() {
     if (!state.graphVisible) return;
     state.graphVisible = false;
     state.graphRequestID++;
+    document.body.classList.remove('is-graph-view');
     elements.graphView.hidden = true;
     elements.searchView.hidden = false;
     const graphButton = document.querySelector('#graphButton');
@@ -804,12 +801,6 @@ function createNoteCard(note, contentSearch) {
     }
     const info = document.createElement('div');
     info.className = 'note-meta';
-    if (note.folder) {
-        const folder = document.createElement('span');
-        folder.className = 'note-folder';
-        folder.textContent = note.folder;
-        info.append(folder);
-    }
     const tags = document.createElement('div');
     tags.className = 'note-tags';
     for (const value of note.tags || []) {
@@ -823,6 +814,16 @@ function createNoteCard(note, contentSearch) {
         tags.append(tag);
     }
     info.append(tags);
+    if (note.folder) {
+        const folder = document.createElement('span');
+        folder.className = 'note-folder';
+        folder.title = note.folder;
+        folder.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
+        const label = document.createElement('span');
+        label.textContent = note.folder;
+        folder.append(label);
+        info.append(folder);
+    }
     const actions = document.createElement('div');
     actions.className = 'note-actions';
     const remove = document.createElement('button');
@@ -962,7 +963,7 @@ async function exportBackup(button = document.querySelector('#exportBackup')) {
 
 async function importBackup(file, button = document.querySelector('#importBackup')) {
     if (!window.confirm(
-        'Restaurar este backup substitui TODAS as notas, pastas, tags, histórico e anexos atuais.\n\n' +
+        'Restaurar este backup substitui TODAS as notas, pastas, tags e anexos atuais.\n\n' +
         'Essa ação não pode ser desfeita. Deseja continuar?'
     )) return;
     if (button) button.disabled = true;
@@ -992,143 +993,6 @@ async function importBackup(file, button = document.querySelector('#importBackup
         showMessage(`Não foi possível restaurar o backup: ${error.message}`, 'error');
     } finally {
         if (button) button.disabled = false;
-    }
-}
-
-async function openHistory() {
-    if (state.noteID === null) return;
-    if (!(await flushSave())) return;
-    const noteID = state.noteID;
-    elements.historyDialog.showModal();
-    await loadHistory(noteID);
-}
-
-async function loadHistory(noteID) {
-    const requestID = ++state.historyRequestID;
-    elements.historyList.replaceChildren();
-    elements.historyEmpty.hidden = true;
-    for (let index = 0; index < 3; index++) {
-        const placeholder = document.createElement('li');
-        placeholder.className = 'history-item card';
-        placeholder.setAttribute('aria-hidden', 'true');
-        placeholder.append(...skeletonLines(2));
-        elements.historyList.append(placeholder);
-    }
-    try {
-        const versions = await requestJSON(`/api/notes/${noteID}/versions`);
-        if (requestID !== state.historyRequestID || state.noteID !== noteID) return;
-        if (!Array.isArray(versions)) throw new Error('resposta de histórico inválida');
-        renderHistory(noteID, versions);
-    } catch (error) {
-        if (requestID !== state.historyRequestID) return;
-        elements.historyList.replaceChildren();
-        elements.historyEmpty.hidden = false;
-        elements.historyEmpty.textContent = `Não foi possível carregar o histórico: ${error.message}`;
-    }
-}
-
-function renderHistory(noteID, versions) {
-    elements.historyList.replaceChildren();
-    if (versions.length === 0) {
-        elements.historyEmpty.hidden = false;
-        elements.historyEmpty.textContent = 'Nenhuma versão anterior. O histórico começa na primeira edição.';
-        return;
-    }
-    elements.historyEmpty.hidden = true;
-    for (const version of versions) {
-        const item = document.createElement('li');
-        item.className = 'history-item card';
-
-        const header = document.createElement('div');
-        header.className = 'history-item-header';
-        const label = document.createElement('strong');
-        label.textContent = `Versão ${version.version}`;
-        const when = document.createElement('span');
-        when.className = 'history-date';
-        when.textContent = formatHistoryDate(version.created_at);
-        header.append(label, when);
-
-        const title = document.createElement('div');
-        title.className = 'history-title';
-        title.textContent = version.title || 'Sem título';
-
-        const preview = document.createElement('p');
-        preview.className = 'history-preview';
-        preview.textContent = version.preview || 'Nota vazia.';
-
-        const actions = document.createElement('div');
-        actions.className = 'history-actions';
-        const view = document.createElement('button');
-        view.type = 'button';
-        view.className = 'text-button';
-        view.textContent = 'Ver conteúdo';
-        view.addEventListener('click', () => void toggleHistoryContent(
-            noteID, version, item, view
-        ));
-        const restore = document.createElement('button');
-        restore.type = 'button';
-        restore.className = 'text-button';
-        restore.textContent = 'Restaurar';
-        restore.addEventListener('click', () => void restoreVersion(noteID, version));
-        actions.append(view, restore);
-
-        item.append(header, title, preview, actions);
-        elements.historyList.append(item);
-    }
-}
-
-function formatHistoryDate(value) {
-    if (!value) return '';
-    const parsed = new Date(String(value).replace(' ', 'T') + (String(value).includes('Z') ? '' : 'Z'));
-    if (Number.isNaN(parsed.getTime())) return value;
-    return parsed.toLocaleString('pt-BR');
-}
-
-async function toggleHistoryContent(noteID, version, item, button) {
-    const existing = item.querySelector('.history-content');
-    if (existing) {
-        existing.remove();
-        button.textContent = 'Ver conteúdo';
-        return;
-    }
-    button.disabled = true;
-    try {
-        const detail = await requestJSON(`/api/notes/${noteID}/versions/${version.id}`);
-        const content = document.createElement('pre');
-        content.className = 'history-content';
-        content.textContent = detail.content || 'Nota vazia.';
-        item.append(content);
-        button.textContent = 'Ocultar conteúdo';
-    } catch (error) {
-        showMessage(`Não foi possível abrir a versão: ${error.message}`, 'error');
-    } finally {
-        button.disabled = false;
-    }
-}
-
-async function restoreVersion(noteID, version) {
-    if (!window.confirm(
-        `Restaurar a versão ${version.version}?\n\n` +
-        'O conteúdo atual será guardado no histórico antes da restauração.'
-    )) return;
-    try {
-        const note = await requestJSON(`/api/notes/${noteID}/versions/${version.id}/restore`, {
-            method: 'POST',
-            body: JSON.stringify({ version: state.noteVersion })
-        });
-        elements.historyDialog.close();
-        showEditor(note);
-        state.graphData = null;
-        void Promise.all([loadNotes(), loadTags()]);
-        showMessage('Versão restaurada.', 'success');
-    } catch (error) {
-        if (error.status === 409 && error.body?.note) {
-            elements.historyDialog.close();
-            showEditor(error.body.note);
-            showMessage('A nota foi alterada em outra aba. A versão mais recente foi carregada.', 'error');
-            return;
-        }
-        showMessage(`Não foi possível restaurar a versão: ${error.message}`, 'error');
     }
 }
 
@@ -1350,7 +1214,13 @@ async function openNewNote(folder = state.folder) {
     state.noteFolder = folder;
 }
 
-async function openNote(id, { push = true } = {}) {
+function createAutomaticNoteTitle(date = new Date()) {
+    const pad = value => String(value).padStart(2, '0');
+    const day = `${pad(date.getFullYear() % 100)}${pad(date.getMonth() + 1)}${pad(date.getDate())}`;
+    return `${day} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+async function openNote(id, { push = true, backlinkTarget = null } = {}) {
     if (state.view === 'editor' && !(await flushSave())) return;
     const navigationID = ++state.navigationID;
     let listState = state.view === 'editor' ? state.listState : captureListState();
@@ -1363,6 +1233,8 @@ async function openNote(id, { push = true } = {}) {
             state.directEntry = false;
         }
         showEditor(note);
+        state.pendingBacklink = backlinkTarget;
+        if (backlinkTarget) updatePreview();
     } catch (error) {
         showMessage(`Não foi possível abrir a nota: ${error.message}`, 'error');
     }
@@ -1373,6 +1245,7 @@ function showEditor(note) {
     closeWikilinkAutocomplete();
     elements.attachmentsDialog.close();
     if (window.matchMedia('(max-width: 700px)').matches) closePanel();
+    document.body.classList.remove('is-graph-view');
     document.body.classList.add('is-editor-view');
     state.view = 'editor';
     state.noteID = note?.id ?? null;
@@ -1381,7 +1254,7 @@ function showEditor(note) {
     elements.graphView.hidden = true;
     elements.editorView.hidden = false;
     elements.newNote.hidden = true;
-    elements.noteTitle.value = note?.title || '';
+    elements.noteTitle.value = note ? note.title : createAutomaticNoteTitle();
     state.frontmatterExpanded = false;
     state.noteFolder = note ? note.folder : state.folder;
     elements.deleteCurrentNote.hidden = !note;
@@ -1391,6 +1264,7 @@ function showEditor(note) {
     elements.attachmentsButton.title = 'Abrir anexos';
     elements.attachmentsButton.setAttribute('aria-label', 'Abrir anexos');
     resetBacklinks();
+    state.pendingBacklink = null;
     elements.saveStatus.className = 'save-status';
     elements.saveStatus.textContent = note ? 'Salvo' : 'Rascunho';
     const content = note ? ensureFrontmatterTags(note.content, note.tags || []) : '';
@@ -1739,6 +1613,7 @@ function restoreListState(listState) {
     state.tag = listState.tag || '';
     state.offset = listState.offset || 0;
     state.graphVisible = Boolean(listState.graphVisible);
+    document.body.classList.toggle('is-graph-view', state.graphVisible);
     elements.graphView.hidden = !state.graphVisible;
     elements.searchView.hidden = state.graphVisible;
     const graphButton = document.querySelector('#graphButton');
@@ -1854,7 +1729,10 @@ async function deleteNote(id) {
 }
 
 function updatePreview() {
-    if (elements.editorWorkspace.dataset.editorMode === 'edit') return;
+    if (elements.editorWorkspace.dataset.editorMode === 'edit') {
+        runPendingBacklink();
+        return;
+    }
     const requestID = ++previewRequestID;
     window.clearTimeout(previewTimer);
     const markdown = stripFrontmatter(elements.noteContent.value);
@@ -1865,6 +1743,7 @@ function updatePreview() {
         editorLinePositionCache = null;
         syncPreviewMinimumHeight();
         syncEditorScrollFromSource();
+        runPendingBacklink();
         return;
     }
     previewTimer = window.setTimeout(async () => {
@@ -2300,7 +2179,7 @@ function renderSettingsPanel() {
 
     const description = document.createElement('p');
     description.className = 'settings-description';
-    description.textContent = 'Baixe um arquivo .zip com todas as notas em Markdown, pastas, tags, histórico e anexos, ou restaure um backup substituindo os dados atuais.';
+    description.textContent = 'Baixe um arquivo .zip com todas as notas em Markdown, pastas, tags e anexos, ou restaure um backup substituindo os dados atuais.';
 
     const actions = document.createElement('div');
     actions.className = 'settings-actions';
@@ -2328,7 +2207,7 @@ function renderSettingsPanel() {
 }
 
 function getWorkspacePanelWidthBounds() {
-    const max = Math.max(220, Math.min(640, window.innerWidth - 58 - 80));
+    const max = Math.max(220, Math.min(640, window.innerWidth - 40 - 80));
     return { min: Math.min(220, max), max };
 }
 
@@ -2351,7 +2230,7 @@ function startWorkspacePanelResize(event) {
 
 function resizeWorkspacePanel(event) {
     if (!event.currentTarget.hasPointerCapture?.(event.pointerId)) return;
-    setWorkspacePanelWidth(event.clientX - 58);
+    setWorkspacePanelWidth(event.clientX - 40);
 }
 
 function stopWorkspacePanelResize(event) {
@@ -2700,6 +2579,13 @@ function buildFolderNode(folder) {
     row.append(select);
     const actions = document.createElement('div');
     actions.className = 'tree-folder-actions';
+    const rename = document.createElement('button');
+    rename.type = 'button';
+    rename.className = 'icon-button tree-folder-action';
+    rename.dataset.renameFolder = folder.path;
+    rename.setAttribute('aria-label', `Editar título de ${folder.name}`);
+    rename.title = 'Editar título';
+    rename.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3z"/><path d="m13.5 6.5 3 3"/></svg>';
     const createNote = document.createElement('button');
     createNote.type = 'button';
     createNote.className = 'icon-button tree-folder-action';
@@ -2714,7 +2600,7 @@ function buildFolderNode(folder) {
     createSubfolder.setAttribute('aria-label', `Criar subpasta em ${folder.path}`);
     createSubfolder.title = `Criar subpasta em ${folder.path}`;
     createSubfolder.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v9a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><path d="M16 11v6m-3-3h6"/></svg>';
-    actions.append(createNote, createSubfolder);
+    actions.append(rename, createNote, createSubfolder);
     row.append(actions);
     item.append(row);
     if (state.expandedFolders.has(folder.path)) {
@@ -2755,14 +2641,24 @@ function renderDirectNotes(folder, root) {
         label.className = 'tree-note-label';
         label.textContent = note.title;
         button.append(createTreeDocumentIcon('tree-note-icon'), label);
+        const actions = document.createElement('div');
+        actions.className = 'tree-note-actions';
+        const rename = document.createElement('button');
+        rename.type = 'button';
+        rename.className = 'icon-button tree-note-action';
+        rename.dataset.renameNote = String(note.id);
+        rename.setAttribute('aria-label', `Editar título de ${note.title}`);
+        rename.title = 'Editar título';
+        rename.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3z"/><path d="m13.5 6.5 3 3"/></svg>';
         const remove = document.createElement('button');
         remove.type = 'button';
-        remove.className = 'tree-note-delete';
+        remove.className = 'icon-button tree-note-action tree-note-delete';
         remove.dataset.deleteTreeNote = String(note.id);
         remove.setAttribute('aria-label', `Excluir ${note.title}`);
         remove.title = 'Excluir nota';
         remove.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M6 7l1 14h10l1-14M9 7V4h6v3"/></svg>';
-        item.append(button, remove);
+        actions.append(rename, remove);
+        item.append(button, actions);
         list.append(item);
     }
     if (page.items.length < page.total) {
@@ -2801,6 +2697,20 @@ function handlePanelClick(event) {
     }
     if (event.target.closest('[data-create-folder]')) {
         void createFolder();
+        return;
+    }
+    const renameNote = event.target.closest('[data-rename-note]');
+    if (renameNote) {
+        event.preventDefault();
+        event.stopPropagation();
+        void renameNoteFromTree(Number(renameNote.dataset.renameNote));
+        return;
+    }
+    const renameFolder = event.target.closest('[data-rename-folder]');
+    if (renameFolder) {
+        event.preventDefault();
+        event.stopPropagation();
+        void renameFolderFromTree(renameFolder.dataset.renameFolder);
         return;
     }
     const outlineItem = event.target.closest('[data-outline-line]');
@@ -2958,6 +2868,76 @@ async function refreshFolderTree() {
     await loadFolders();
     const folders = ['', ...state.expandedFolders].filter((folder, index, list) => list.indexOf(folder) === index);
     await Promise.all(folders.map(folder => loadFolderNotes(folder)));
+}
+
+async function renameNoteFromTree(noteID) {
+    const isCurrent = state.view === 'editor' && state.noteID === noteID;
+    if (isCurrent && !(await flushSave())) return;
+    let note;
+    try {
+        note = isCurrent
+            ? { title: elements.noteTitle.value, folder: state.noteFolder, content: elements.noteContent.value, version: state.noteVersion }
+            : await requestJSON(`/api/notes/${noteID}`);
+    } catch (error) {
+        showMessage(`Não foi possível carregar a nota: ${error.message}`, 'error');
+        return;
+    }
+    const value = window.prompt('Novo título da nota:', note.title);
+    if (value === null) return;
+    const title = value.trim();
+    if (!title || title === note.title) return;
+    try {
+        if (isCurrent) {
+            elements.noteTitle.value = title;
+            if (!(await persistDraft())) return;
+        } else {
+            await requestJSON(`/api/notes/${noteID}`, {
+                method: 'PUT',
+                body: JSON.stringify({ ...note, title })
+            });
+            await refreshFolderTree();
+            await loadNotes();
+        }
+        showMessage('Título da nota atualizado.', 'success');
+    } catch (error) {
+        showMessage(`Não foi possível renomear a nota: ${error.message}`, 'error');
+    }
+}
+
+async function renameFolderFromTree(folder) {
+    if (state.view === 'editor' && !(await flushSave())) return;
+    const currentName = folder.split('/').pop();
+    const value = window.prompt(`Novo nome da pasta “${currentName}”:`, currentName);
+    if (value === null) return;
+    const name = value.trim();
+    if (!name || name === currentName) return;
+    try {
+        const result = await requestJSON('/api/folders/rename', {
+            method: 'POST',
+            body: JSON.stringify({ source: folder, name })
+        });
+        state.graphData = null;
+        state.folder = rebaseFolderPath(state.folder, folder, result.folder);
+        state.expandedFolders = new Set(
+            [...state.expandedFolders].map(path => rebaseFolderPath(path, folder, result.folder))
+        );
+        if (state.listState) {
+            state.listState.folder = rebaseFolderPath(state.listState.folder || '', folder, result.folder);
+        }
+        if (state.view === 'editor' && (state.noteFolder === folder || state.noteFolder.startsWith(`${folder}/`))) {
+            state.noteFolder = rebaseFolderPath(state.noteFolder, folder, result.folder);
+            state.savedDraft = getDraft();
+            updateEditorBreadcrumb();
+            const current = history.state || {};
+            history.replaceState({ ...current, list: state.listState }, '', location.href);
+        }
+        updateListHistory();
+        await refreshFolderTree();
+        await loadNotes();
+        showMessage('Pasta renomeada.', 'success');
+    } catch (error) {
+        showMessage(`Não foi possível renomear a pasta: ${error.message}`, 'error');
+    }
 }
 
 async function createFolder(parent = '') {

@@ -986,13 +986,6 @@ func TestBackupRoundTripRestoresNotesAndAttachments(t *testing.T) {
 		len(restored.Tags) != 2 || restored.Version != target.Version {
 		t.Fatalf("restored note differs from the export: %#v", restored)
 	}
-	versions, err := app.ListNoteVersions(targetID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(versions) != 1 || versions[0].Version != 1 {
-		t.Fatalf("restore did not preserve the note history: %#v", versions)
-	}
 	if _, err := app.GetNote(staleID); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("stale note survived the restore: %v", err)
 	}
@@ -1112,126 +1105,6 @@ func TestBackupRejectsUnsafeAttachmentPaths(t *testing.T) {
 	}
 }
 
-func TestNoteHistorySnapshotsAndRestoresVersions(t *testing.T) {
-	app, err := NewApp(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer app.Close()
-
-	id, err := app.CreateNote(Note{Title: "History", Content: "first"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, content := range []string{"second", "third"} {
-		note, err := app.GetNote(id)
-		if err != nil {
-			t.Fatal(err)
-		}
-		note.Content = content
-		if err := app.UpdateNote(id, note); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	versions, err := app.ListNoteVersions(id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(versions) != 2 {
-		t.Fatalf("expected two snapshots, got %#v", versions)
-	}
-	if versions[0].Version != 2 || versions[1].Version != 1 {
-		t.Fatalf("snapshots are not newest first: %#v", versions)
-	}
-	first, err := app.GetNoteVersion(id, versions[1].ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if first.Content != "first" || first.Title != "History" {
-		t.Fatalf("unexpected snapshot content: %#v", first)
-	}
-
-	current, err := app.GetNote(id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, staleErr := app.RestoreNoteVersion(id, versions[1].ID, current.Version-1)
-	if !errors.Is(staleErr, ErrVersionConflict) {
-		t.Fatalf("stale restore error = %v, want ErrVersionConflict", staleErr)
-	}
-
-	restored, err := app.RestoreNoteVersion(id, versions[1].ID, current.Version)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if restored.Content != "first" || restored.Version != current.Version+1 {
-		t.Fatalf("unexpected restored note: %#v", restored)
-	}
-	versions, err = app.ListNoteVersions(id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(versions) != 3 || versions[0].Version != current.Version {
-		t.Fatalf("restore did not snapshot the previous state: %#v", versions)
-	}
-
-	// Old snapshots are pruned so a note edited for a long time does not grow
-	// the database without bound.
-	for index := 0; index < noteVersionLimit+5; index++ {
-		note, err := app.GetNote(id)
-		if err != nil {
-			t.Fatal(err)
-		}
-		note.Content = fmt.Sprintf("edit %d", index)
-		if err := app.UpdateNote(id, note); err != nil {
-			t.Fatal(err)
-		}
-	}
-	versions, err = app.ListNoteVersions(id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(versions) != noteVersionLimit {
-		t.Fatalf("history kept %d versions, want %d", len(versions), noteVersionLimit)
-	}
-
-	handler := app.Handler(filepath.Join("..", "web", "frontend"))
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet,
-		fmt.Sprintf("/api/notes/%d/versions", id), nil))
-	if response.Code != http.StatusOK {
-		t.Fatalf("history endpoint status = %d, body = %s", response.Code, response.Body.String())
-	}
-	var payload []NoteVersion
-	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
-		t.Fatal(err)
-	}
-	if len(payload) != noteVersionLimit {
-		t.Fatalf("history endpoint returned %d versions", len(payload))
-	}
-
-	response = httptest.NewRecorder()
-	current, err = app.GetNote(id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	request := httptest.NewRequest(http.MethodPost,
-		fmt.Sprintf("/api/notes/%d/versions/%d/restore", id, payload[0].ID),
-		strings.NewReader(fmt.Sprintf(`{"version":%d}`, current.Version)))
-	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusOK {
-		t.Fatalf("restore endpoint status = %d, body = %s", response.Code, response.Body.String())
-	}
-	var note Note
-	if err := json.Unmarshal(response.Body.Bytes(), &note); err != nil {
-		t.Fatal(err)
-	}
-	if note.ID != id || note.Content == "" {
-		t.Fatalf("unexpected restored payload: %#v", note)
-	}
-}
-
 func TestOptimisticConcurrencyRejectsStaleUpdates(t *testing.T) {
 	app, err := NewApp(t.TempDir())
 	if err != nil {
@@ -1342,9 +1215,9 @@ func TestMigrationBackfillsPersistedLinksIdempotently(t *testing.T) {
 			app.Close()
 			t.Fatal(err)
 		}
-		if version != 4 {
+		if version != 5 {
 			app.Close()
-			t.Fatalf("schema version = %d, want 4", version)
+			t.Fatalf("schema version = %d, want 5", version)
 		}
 		if err := app.Close(); err != nil {
 			t.Fatal(err)

@@ -126,8 +126,8 @@
 
         /* Layout */
         --control-height: 36px;
-        --topbar-height: 62px;
-        --rail-width: 58px;
+        --topbar-height: 42px;
+        --rail-width: 40px;
     }
 
     :root[data-theme="light"] {

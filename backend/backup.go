@@ -30,13 +30,12 @@ const (
 var errInvalidBackup = errors.New("invalid backup archive")
 
 type backupManifest struct {
-	Format      string              `json:"format"`
-	Version     int                 `json:"version"`
-	CreatedAt   string              `json:"created_at"`
-	Notes       []backupNote        `json:"notes"`
-	Folders     []string            `json:"folders,omitempty"`
-	Versions    []backupNoteVersion `json:"versions,omitempty"`
-	Attachments []backupAttachment  `json:"attachments"`
+	Format      string             `json:"format"`
+	Version     int                `json:"version"`
+	CreatedAt   string             `json:"created_at"`
+	Notes       []backupNote       `json:"notes"`
+	Folders     []string           `json:"folders,omitempty"`
+	Attachments []backupAttachment `json:"attachments"`
 }
 
 type backupNote struct {
@@ -58,17 +57,6 @@ type backupAttachment struct {
 	MediaType   string `json:"media_type"`
 	Size        int64  `json:"size"`
 	CreatedAt   string `json:"created_at"`
-}
-
-type backupNoteVersion struct {
-	ID        int64    `json:"id"`
-	NoteID    int64    `json:"note_id"`
-	Version   int64    `json:"version"`
-	Title     string   `json:"title"`
-	Content   string   `json:"content"`
-	Folder    string   `json:"folder"`
-	Tags      []string `json:"tags,omitempty"`
-	CreatedAt string   `json:"created_at"`
 }
 
 // ExportBackup writes a logical archive with a manifest and every attachment
@@ -120,35 +108,6 @@ func (a *App) ExportBackup(destination io.Writer) error {
 			return err
 		}
 		manifest.Folders = append(manifest.Folders, folder)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return err
-	}
-	if err := rows.Close(); err != nil {
-		return err
-	}
-
-	rows, err = a.db.Query(`SELECT id, note_id, version, title, COALESCE(content, ''),
-		COALESCE(folder, ''), COALESCE(tags, ''), created_at
-		FROM note_versions ORDER BY note_id, id`)
-	if err != nil {
-		return err
-	}
-	for rows.Next() {
-		var version backupNoteVersion
-		var tags string
-		if err := rows.Scan(&version.ID, &version.NoteID, &version.Version, &version.Title,
-			&version.Content, &version.Folder, &tags, &version.CreatedAt); err != nil {
-			rows.Close()
-			return err
-		}
-		for _, tag := range strings.Split(tags, ",") {
-			if tag = strings.TrimSpace(tag); tag != "" {
-				version.Tags = append(version.Tags, tag)
-			}
-		}
-		manifest.Versions = append(manifest.Versions, version)
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
@@ -322,9 +281,6 @@ func (a *App) RestoreBackup(data []byte) (int, int, error) {
 	if err := insertRestoredFolders(tx, manifest.Folders); err != nil {
 		return 0, 0, err
 	}
-	if err := insertRestoredVersions(tx, manifest.Versions); err != nil {
-		return 0, 0, err
-	}
 	if err := insertRestoredAttachments(tx, manifest.Attachments); err != nil {
 		return 0, 0, err
 	}
@@ -413,41 +369,6 @@ func readBackupArchive(data []byte) (backupManifest, map[string]*zip.File, error
 		if note.Version < 1 {
 			note.Version = 1
 		}
-	}
-
-	versionIDs := make(map[int64]struct{}, len(manifest.Versions))
-	versionNumbers := make(map[string]struct{}, len(manifest.Versions))
-	for index := range manifest.Versions {
-		version := &manifest.Versions[index]
-		if version.ID < 1 {
-			return backupManifest{}, nil, fmt.Errorf("%w: version %d has an invalid ID", errInvalidBackup, index)
-		}
-		if _, exists := versionIDs[version.ID]; exists {
-			return backupManifest{}, nil, fmt.Errorf("%w: duplicate version ID %d", errInvalidBackup, version.ID)
-		}
-		versionIDs[version.ID] = struct{}{}
-		if _, exists := noteIDs[version.NoteID]; !exists {
-			return backupManifest{}, nil, fmt.Errorf("%w: version %d references an unknown note",
-				errInvalidBackup, version.ID)
-		}
-		if version.Version < 1 {
-			return backupManifest{}, nil, fmt.Errorf("%w: version %d has an invalid number",
-				errInvalidBackup, version.ID)
-		}
-		key := fmt.Sprintf("%d/%d", version.NoteID, version.Version)
-		if _, exists := versionNumbers[key]; exists {
-			return backupManifest{}, nil, fmt.Errorf("%w: duplicate snapshot %q", errInvalidBackup, key)
-		}
-		versionNumbers[key] = struct{}{}
-		candidate := Note{
-			Title: version.Title, Content: version.Content, Folder: version.Folder, Tags: version.Tags,
-		}
-		if err := validateNote(&candidate); err != nil {
-			return backupManifest{}, nil, fmt.Errorf("%w: version %d: %v", errInvalidBackup, version.ID, err)
-		}
-		version.Title = candidate.Title
-		version.Folder = candidate.Folder
-		version.Tags = candidate.Tags
 	}
 
 	attachmentIDs := make(map[int64]struct{}, len(manifest.Attachments))
@@ -607,19 +528,6 @@ func insertRestoredNotes(tx *sql.Tx, notes []backupNote) error {
 		}
 		if err := replaceNoteLinks(tx, note.ID, note.Content); err != nil {
 			return err
-		}
-	}
-	return nil
-}
-
-func insertRestoredVersions(tx *sql.Tx, versions []backupNoteVersion) error {
-	for _, version := range versions {
-		createdAt := strings.TrimSpace(version.CreatedAt)
-		if _, err := tx.Exec(`INSERT INTO note_versions(id, note_id, version, title, content, folder, tags, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?, ''), datetime('now')))`,
-			version.ID, version.NoteID, version.Version, version.Title, version.Content,
-			version.Folder, strings.Join(version.Tags, ","), createdAt); err != nil {
-			return fmt.Errorf("restore version %d: %w", version.ID, err)
 		}
 	}
 	return nil

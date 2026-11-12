@@ -505,9 +505,9 @@
     }
 
     .brand-mark {
-        width: 34px;
-        height: 34px;
-        margin-bottom: 12px;
+        width: 28px;
+        height: 28px;
+        margin-bottom: 10px;
         border: 0;
         border-radius: var(--radius-lg);
         font-weight: 800;
@@ -523,8 +523,8 @@
     .rail-button {
         position: relative;
         display: grid;
-        width: 40px;
-        height: 40px;
+        width: 32px;
+        height: 32px;
         flex: 0 0 auto;
         place-items: center;
         border: 0;
@@ -536,8 +536,8 @@
     }
 
     .rail-button svg {
-        width: 20px;
-        height: 20px;
+        width: 17px;
+        height: 17px;
         fill: none;
         stroke: currentColor;
         stroke-linecap: round;
@@ -566,23 +566,23 @@
     }
 
     .rail-button#settingsButton svg {
-        width: 19px;
-        height: 19px;
+        width: 16px;
+        height: 16px;
     }
 
     .backlinks-count {
         position: absolute;
         top: 0;
         right: 0;
-        min-width: 15px;
-        height: 15px;
+        min-width: 13px;
+        height: 13px;
         padding: 0 3px;
         border-radius: var(--radius-pill);
         color: var(--accent-contrast);
         background: var(--accent);
-        font-size: 9px;
+        font-size: 8px;
         font-weight: 700;
-        line-height: 15px;
+        line-height: 13px;
         text-align: center;
     }
 
@@ -620,10 +620,14 @@
     .tree-root,
     .tree-folder {
         position: relative;
+        display: flex;
+        min-height: 26px;
+        align-items: center;
+        gap: 6px;
         overflow: hidden;
         width: 100%;
-        padding: 3px 6px;
-        border-radius: var(--radius-xs);
+        padding: 0 6px;
+        border-radius: var(--radius-sm);
         text-overflow: ellipsis;
         white-space: nowrap;
         transition: var(--transition-colors);
@@ -675,9 +679,17 @@
     }
 
     .tree-root-row {
+        position: relative;
         display: flex;
+        min-height: 26px;
         align-items: center;
-        gap: 4px;
+        gap: 2px;
+        border-radius: var(--radius-sm);
+        transition: background-color var(--duration-fast) var(--ease-standard);
+    }
+
+    .tree-root-row:hover {
+        background: var(--surface-hover);
     }
 
     .tree-root-row .tree-root {
@@ -687,22 +699,34 @@
     }
 
     .tree-root-actions {
+        position: absolute;
+        right: 4px;
         display: flex;
-        flex: 0 0 auto;
         gap: 2px;
+        padding-left: 4px;
+        background: inherit;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity var(--duration-fast) var(--ease-standard);
+    }
+
+    .tree-root-row:hover .tree-root-actions,
+    .tree-root-row:focus-within .tree-root-actions {
+        opacity: 1;
+        pointer-events: auto;
     }
 
     .tree-root-action {
-        width: 26px;
-        height: 26px;
-        flex: 0 0 26px;
+        width: 24px;
+        height: 24px;
+        flex: 0 0 24px;
         color: var(--muted);
         font-size: var(--text-lg);
     }
 
     .tree-root-action svg {
-        width: 15px;
-        height: 15px;
+        width: 14px;
+        height: 14px;
     }
 
     .tree-root-action:hover {
@@ -713,16 +737,29 @@
     .tree-row {
         position: relative;
         display: flex;
+        min-height: 26px;
         align-items: center;
         gap: 2px;
+        border-radius: var(--radius-sm);
+        transition: background-color var(--duration-fast) var(--ease-standard);
+    }
+
+    .tree-row:hover {
+        background: var(--surface-hover);
+    }
+
+    .tree-row:has(.tree-folder.is-selected) {
+        background: var(--accent-soft);
     }
 
     .tree-folder {
         display: flex;
         min-width: 0;
+        min-height: 26px;
         flex: 1;
         align-items: center;
         gap: 6px;
+        padding: 0 6px;
     }
 
     .tree-folder-icon,
@@ -758,51 +795,57 @@
         text-overflow: ellipsis;
     }
 
-    .tree-folder-actions {
+    .tree-folder-actions,
+    .tree-note-actions {
         position: absolute;
-        right: 3px;
+        right: 4px;
         display: flex;
         gap: 1px;
-        padding-left: 3px;
-        background: var(--surface);
+        padding-left: 4px;
+        background: inherit;
         opacity: 0;
         pointer-events: none;
+        transition: opacity var(--duration-fast) var(--ease-standard);
     }
 
     .tree-row:hover .tree-folder-actions,
-    .tree-row:focus-within .tree-folder-actions {
+    .tree-row:focus-within .tree-folder-actions,
+    .tree-note-item:hover .tree-note-actions,
+    .tree-note-item:focus-within .tree-note-actions {
         opacity: 1;
         pointer-events: auto;
     }
 
-    .tree-folder-action {
-        width: 23px;
-        height: 23px;
-        flex: 0 0 23px;
+    .tree-folder-action,
+    .tree-note-action {
+        width: 24px;
+        height: 24px;
+        flex: 0 0 24px;
         color: var(--muted);
         font-size: var(--text-lg);
     }
 
-    .tree-folder-action svg {
+    .tree-folder-action svg,
+    .tree-note-action svg {
         width: 14px;
         height: 14px;
     }
 
-    .tree-folder-action:hover {
+    .tree-folder-action:hover,
+    .tree-note-action:hover {
         color: var(--accent);
         background: var(--surface-hover);
     }
 
     .tree-root:hover,
     .tree-folder:hover {
-        background: var(--surface-hover);
         color: var(--text);
     }
 
     .tree-root.is-selected,
     .tree-folder.is-selected {
         color: var(--accent);
-        background: var(--accent-soft);
+        background: transparent;
     }
 
     .tree-root.is-selected::before,
@@ -889,21 +932,30 @@
     }
 
     .tree-note-item {
+        position: relative;
         display: flex;
         min-width: 0;
+        min-height: 26px;
         align-items: center;
+        border-radius: var(--radius-sm);
+        transition: background-color var(--duration-fast) var(--ease-standard);
+    }
+
+    .tree-note-item:hover {
+        background: var(--surface-hover);
     }
 
     .tree-note {
         display: flex;
         min-width: 0;
+        min-height: 26px;
         flex: 1;
         align-items: center;
         gap: 6px;
         overflow: hidden;
-        padding: 2px 5px;
+        padding: 0 6px;
         border: 0;
-        border-radius: var(--radius-xs);
+        border-radius: var(--radius-sm);
         color: var(--muted);
         background: transparent;
         font-size: var(--text-sm);
@@ -916,29 +968,15 @@
 
     .tree-note:hover {
         color: var(--text);
-        background: var(--surface-hover);
+        background: transparent;
     }
 
     .tree-note-delete {
-        display: grid;
-        width: 22px;
-        height: 22px;
-        flex: 0 0 22px;
-        place-items: center;
-        border: 0;
-        border-radius: var(--radius-xs);
         color: var(--danger);
-        background: transparent;
-        opacity: 0;
-        cursor: pointer;
-    }
-
-    .tree-note-item:hover .tree-note-delete,
-    .tree-note-item:focus-within .tree-note-delete {
-        opacity: 1;
     }
 
     .tree-note-delete:hover {
+        color: var(--danger);
         background: var(--danger-soft);
     }
 
@@ -971,6 +1009,102 @@
 
     .tree-loading .skeleton-line {
         width: 78%;
+    }
+
+    /* ---------- Outline and backlinks panels ---------- */
+
+    .outline-panel-empty,
+    .backlinks-panel-empty {
+        display: grid;
+        gap: 6px;
+        padding: 14px 10px;
+        color: var(--muted);
+        font-size: var(--text-sm);
+        line-height: var(--leading-normal);
+    }
+
+    .outline-panel-empty p,
+    .backlinks-panel-empty p {
+        margin: 0;
+    }
+
+    .outline-panel-empty small,
+    .backlinks-panel-empty small {
+        color: var(--faint);
+        font-size: var(--text-xs);
+    }
+
+    .outline-item {
+        display: flex;
+        width: 100%;
+        min-height: 28px;
+        align-items: center;
+        overflow: hidden;
+        padding: 6px 8px;
+        border: 0;
+        border-radius: var(--radius-sm);
+        color: var(--muted);
+        background: transparent;
+        font-size: var(--text-sm);
+        line-height: var(--leading-normal);
+        text-align: left;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: var(--transition-colors);
+    }
+
+    .outline-item:hover,
+    .outline-item:focus-visible {
+        color: var(--text);
+        background: var(--surface-hover);
+    }
+
+    .outline-item[data-level="1"] {
+        color: var(--text);
+        font-weight: 600;
+    }
+
+    .backlink-item {
+        display: flex;
+        width: 100%;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+        padding: 7px 8px;
+        border: 0;
+        border-radius: var(--radius-sm);
+        color: var(--muted);
+        background: transparent;
+        text-align: left;
+        cursor: pointer;
+        transition: var(--transition-colors);
+    }
+
+    .backlink-item:hover,
+    .backlink-item:focus-visible {
+        background: var(--surface-hover);
+    }
+
+    .backlink-item-title {
+        color: var(--text);
+        font-size: var(--text-sm);
+        font-weight: 550;
+    }
+
+    .backlink-item-folder {
+        color: var(--faint);
+        font-size: var(--text-2xs);
+    }
+
+    .backlink-item-preview {
+        display: -webkit-box;
+        overflow: hidden;
+        color: var(--muted);
+        font-size: var(--text-xs);
+        line-height: 1.45;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
     }
 
     /* ---------- Search and results ---------- */
@@ -1072,9 +1206,9 @@
     .note-card {
         display: grid;
         min-height: 52px;
-        grid-template-columns: minmax(0, 1fr) minmax(100px, 210px) auto;
+        grid-template-columns: minmax(0, 1fr) minmax(90px, 170px) auto;
         align-items: center;
-        gap: 16px;
+        gap: 12px;
         padding: 8px 12px 8px 14px;
         border: 1px solid var(--border);
         border-radius: var(--radius-card);
@@ -1120,7 +1254,7 @@
         font-size: var(--text-sm);
         line-height: 1.45;
         -webkit-box-orient: vertical;
-        -webkit-line-clamp: 3;
+        -webkit-line-clamp: 4;
     }
 
     .note-preview mark {
@@ -1137,26 +1271,46 @@
     }
 
     .note-meta {
-        display: grid;
+        display: flex;
         min-width: 0;
-        gap: 5px;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 4px 10px;
         color: var(--faint);
         font-size: var(--text-xs);
     }
 
     .note-folder {
+        display: inline-flex;
+        min-width: 0;
+        max-width: 100%;
+        align-items: center;
+        gap: 4px;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
     }
 
-    .note-folder::before {
-        color: var(--accent);
-        content: "▤ ";
+    .note-folder svg {
+        width: 13px;
+        height: 13px;
+        flex: 0 0 auto;
+        fill: none;
+        stroke: var(--accent);
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 1.7;
+    }
+
+    .note-folder span {
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     .note-tags {
         display: flex;
+        min-width: 0;
         flex-wrap: wrap;
         gap: 4px;
     }
@@ -1220,10 +1374,9 @@
         min-height: 32px;
     }
 
-    /* ---------- Dialogs, attachments and history ---------- */
+    /* ---------- Dialogs and attachments ---------- */
 
     .attachments-dialog,
-    .history-dialog,
     .command-palette {
         border: 1px solid var(--border);
         border-radius: var(--radius-xl);
@@ -1233,13 +1386,11 @@
     }
 
     .attachments-dialog[open],
-    .history-dialog[open],
     .command-palette[open] {
         animation: dialog-in var(--duration-normal) var(--ease-standard);
     }
 
     .attachments-dialog::backdrop,
-    .history-dialog::backdrop,
     .command-palette::backdrop {
         background: var(--overlay);
         backdrop-filter: blur(3px);
@@ -1314,103 +1465,6 @@
         background: transparent;
         font-size: var(--text-xs);
         cursor: pointer;
-    }
-
-    .history-dialog {
-        width: min(560px, calc(100vw - 32px));
-        max-height: min(78vh, 640px);
-        padding: 18px;
-    }
-
-    .history-dialog-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        margin-bottom: 12px;
-    }
-
-    .history-dialog-header h2 {
-        margin: 0;
-        font-size: var(--text-lg);
-    }
-
-    .history-list {
-        display: grid;
-        max-height: min(54vh, 460px);
-        gap: 10px;
-        overflow: auto;
-        margin: 0;
-        padding: 0;
-        list-style: none;
-    }
-
-    .history-item {
-        padding: 10px 12px;
-        border: 1px solid var(--border);
-        border-radius: var(--radius-card);
-        background: var(--surface-raised);
-        box-shadow: inset 0 1px 0 var(--card-highlight);
-    }
-
-    .history-item-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-    }
-
-    .history-item-header strong {
-        font-size: var(--text-sm);
-    }
-
-    .history-date {
-        color: var(--faint);
-        font-size: var(--text-xs);
-    }
-
-    .history-title {
-        margin-top: 4px;
-        color: var(--text);
-        font-size: var(--text-sm);
-        font-weight: 600;
-    }
-
-    .history-preview {
-        display: -webkit-box;
-        overflow: hidden;
-        margin: 6px 0 8px;
-        color: var(--muted);
-        font-size: var(--text-xs);
-        line-height: 1.45;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: 3;
-    }
-
-    .history-content {
-        max-height: 260px;
-        overflow: auto;
-        margin: 8px 0;
-        padding: 8px 10px;
-        border-radius: var(--radius-control);
-        color: var(--text);
-        background: var(--bg);
-        font-family: var(--font-mono);
-        font-size: var(--text-xs);
-        line-height: var(--leading-normal);
-        white-space: pre-wrap;
-    }
-
-    .history-actions {
-        display: flex;
-        justify-content: flex-end;
-        gap: 14px;
-    }
-
-    .history-empty {
-        margin: 16px 0;
-        color: var(--muted);
-        font-size: var(--text-sm);
     }
 
     /* ---------- Command palette ---------- */

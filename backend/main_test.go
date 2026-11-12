@@ -340,10 +340,6 @@ func TestNotesWorkflowThroughHTTPAPI(t *testing.T) {
 		!strings.Contains(response.Body.String(), "Workflow draft") {
 		t.Fatalf("updated note was not searchable: status=%d body=%s", response.Code, response.Body.String())
 	}
-	historyResponse := send(http.MethodGet, notePath+"/versions", "")
-	if historyResponse.Code != http.StatusOK || !strings.Contains(historyResponse.Body.String(), "first version") {
-		t.Fatalf("note history response = %d, body = %s", historyResponse.Code, historyResponse.Body.String())
-	}
 
 	backupResponse := send(http.MethodGet, "/api/backup", "")
 	if backupResponse.Code != http.StatusOK {

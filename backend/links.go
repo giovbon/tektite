@@ -394,9 +394,6 @@ func rewriteIncomingLinks(tx *sql.Tx, noteID int64, newTitle string, byPath, byT
 		if !changed {
 			continue
 		}
-		if err := snapshotNoteVersion(tx, id); err != nil {
-			return err
-		}
 		if _, err := tx.Exec(`UPDATE notes SET content = ?, version = version + 1,
 			updated_at = datetime('now') WHERE rowid = ?`, rewritten, id); err != nil {
 			return err
@@ -697,9 +694,6 @@ func relinkNotesAfterMove(tx *sql.Tx, before, after []indexedNote, skipSourceID 
 		if !changed {
 			continue
 		}
-		if err := snapshotNoteVersion(tx, id); err != nil {
-			return err
-		}
 		if _, err := tx.Exec(`UPDATE notes SET content = ?, version = version + 1,
 			updated_at = datetime('now') WHERE rowid = ?`, rewritten, id); err != nil {
 			return err
@@ -995,22 +989,32 @@ func resolveNoteLink(source indexedNote, rawTarget string, byPath, byTitle map[s
 	if target == "" || strings.HasPrefix(target, "#") {
 		return 0
 	}
-	if strings.HasPrefix(target, "//") {
+	if strings.HasPrefix(target, "//") || strings.Contains(target, "://") {
 		return 0
 	}
-	// Most targets are plain titles or relative paths. Parsing every one as a
-	// URL is unnecessary and shows up in graph benchmarks; only do it when the
-	// target actually contains URL syntax.
-	if strings.ContainsAny(target, "?#%:") {
-		parsed, err := url.Parse(target)
-		if err != nil || parsed.Scheme != "" || parsed.Host != "" {
-			return 0
-		}
-		target = parsed.Path
-		if decoded, err := url.PathUnescape(target); err == nil {
-			target = decoded
-		}
+	// Plain titles and relative paths must win before any URL parsing. Note
+	// titles can contain characters like ":" (for example "261112 19:42"),
+	// which url.Parse would reject as a malformed URL and make wikilinks,
+	// graph edges and backlinks silently disappear.
+	if id := resolveNoteLinkPath(source, target, byPath, byTitle); id != 0 {
+		return id
 	}
+	// Only fall back to URL syntax when the target actually uses it.
+	if !strings.ContainsAny(target, "?#%") {
+		return 0
+	}
+	parsed, err := url.Parse(target)
+	if err != nil || parsed.Scheme != "" || parsed.Host != "" {
+		return 0
+	}
+	target = parsed.Path
+	if decoded, err := url.PathUnescape(target); err == nil {
+		target = decoded
+	}
+	return resolveNoteLinkPath(source, target, byPath, byTitle)
+}
+
+func resolveNoteLinkPath(source indexedNote, target string, byPath, byTitle map[string]int64) int64 {
 	if target == "" {
 		return 0
 	}
@@ -1018,6 +1022,7 @@ func resolveNoteLink(source indexedNote, rawTarget string, byPath, byTitle map[s
 	if strings.HasPrefix(target, "/api/") {
 		return 0
 	}
+	absolute := strings.HasPrefix(target, "/")
 	target = strings.TrimPrefix(target, "/")
 	if strings.HasSuffix(strings.ToLower(target), ".md") {
 		target = target[:len(target)-3]
@@ -1026,7 +1031,7 @@ func resolveNoteLink(source indexedNote, rawTarget string, byPath, byTitle map[s
 		return 0
 	}
 	candidates := []string{target}
-	if !strings.HasPrefix(rawTarget, "/") && source.Folder != "" {
+	if !absolute && source.Folder != "" {
 		relative := path.Clean(path.Join(source.Folder, target))
 		if relative != ".." && !strings.HasPrefix(relative, "../") {
 			candidates = append([]string{relative}, candidates...)

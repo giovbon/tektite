@@ -199,7 +199,7 @@ func (a *App) migrate() error {
 		{version: 1, apply: migrateSearchIndex},
 		{version: 2, apply: migrateNoteLinks},
 		{version: 3, apply: migrateNoteVersions},
-		{version: 4, apply: migrateNoteHistory},
+		{version: 5, apply: migrateRemoveNoteHistory},
 	}
 	for _, migration := range migrations {
 		var applied int
@@ -364,6 +364,13 @@ func migrateNoteVersions(tx *sql.Tx) error {
 	return err
 }
 
+// migrateRemoveNoteHistory deletes the snapshot table left behind by older
+// versions that shipped a per-note history feature.
+func migrateRemoveNoteHistory(tx *sql.Tx) error {
+	_, err := tx.Exec("DROP TABLE IF EXISTS note_versions")
+	return err
+}
+
 func (a *App) ListNotes(folder, tag string, limit, offset int) (Page, error) {
 	var total int
 	if err := a.db.QueryRow(`SELECT COUNT(*) FROM notes
@@ -463,7 +470,7 @@ func (a *App) SearchNotes(query, mode, folder, tag string, limit, offset int) (P
 	}
 	preview := "substr(COALESCE(n.content, ''), 1, 180)"
 	if mode == "content" {
-		preview = "snippet(notes_fts, 1, '<mark>', '</mark>', '…', 24)"
+		preview = "snippet(notes_fts, 1, '<mark>', '</mark>', '…', 48)"
 	}
 	var total int
 	if err := a.db.QueryRow(`SELECT COUNT(*)
@@ -596,9 +603,6 @@ func (a *App) UpdateNote(id int64, note Note) error {
 	if note.Version > 0 && note.Version != oldVersion {
 		return ErrVersionConflict
 	}
-	if err := snapshotNoteVersion(tx, id); err != nil {
-		return err
-	}
 	titleChanged := oldTitle != note.Title
 	folderChanged := oldFolder != note.Folder
 	var before []indexedNote
@@ -658,9 +662,6 @@ func (a *App) MoveNoteFolder(id int64, folder string) error {
 	if err != nil {
 		return err
 	}
-	if err := snapshotNoteVersion(tx, id); err != nil {
-		return err
-	}
 	result, err := tx.Exec(`UPDATE notes SET folder = ?, version = version + 1,
 		updated_at = datetime('now') WHERE rowid = ?`, folder, id)
 	if err != nil {
@@ -701,11 +702,38 @@ func (a *App) MoveFolder(source, target string) (string, int64, error) {
 	if target != "" {
 		destination = path.Join(target, name)
 	}
+	return a.moveFolder(source, destination)
+}
+
+// RenameFolder changes only the final segment of a folder path, keeping its
+// parent and rewriting every note below it.
+func (a *App) RenameFolder(source, name string) (string, int64, error) {
+	normalizedSource, err := normalizeFolder(source)
+	if err != nil || normalizedSource != source || source == "" {
+		return "", 0, errors.New("source must be a non-empty normalized folder path")
+	}
+	name = strings.TrimSpace(name)
+	if name == "" || name == "." || name == ".." ||
+		strings.ContainsAny(name, `/\`) || len([]byte(name)) > 255 {
+		return "", 0, errors.New("folder name must be a single non-empty path segment")
+	}
+	parent := path.Dir(source)
+	destination := name
+	if parent != "." {
+		destination = path.Join(parent, name)
+	}
+	return a.moveFolder(source, destination)
+}
+
+func (a *App) moveFolder(source, destination string) (string, int64, error) {
 	if len(destination) > 1024 {
 		return "", 0, errors.New("destination folder path exceeds the 1024 character limit")
 	}
 	if destination == source {
 		return "", 0, errors.New("folder is already in that location")
+	}
+	if strings.HasPrefix(destination, source+"/") {
+		return "", 0, errors.New("a folder cannot be moved into itself or one of its descendants")
 	}
 
 	tx, err := a.db.Begin()
@@ -766,13 +794,6 @@ func (a *App) MoveFolder(source, target string) (string, int64, error) {
 	}
 	if err := rows.Close(); err != nil {
 		return "", 0, err
-	}
-	for _, note := range before {
-		if note.Folder == source || strings.HasPrefix(note.Folder, source+"/") {
-			if err := snapshotNoteVersion(tx, note.ID); err != nil {
-				return "", 0, err
-			}
-		}
 	}
 	if _, err := tx.Exec(`UPDATE notes SET folder = ? || substr(folder, length(?) + 1),
 		version = version + 1, updated_at = datetime('now')
@@ -989,6 +1010,7 @@ func (a *App) Handler(frontendDir string) http.Handler {
 	mux.HandleFunc("/api/backup", a.handleBackup)
 	mux.HandleFunc("/api/folders", a.handleFolders)
 	mux.HandleFunc("/api/folders/move", a.handleFolderMove)
+	mux.HandleFunc("/api/folders/rename", a.handleFolderRename)
 	mux.HandleFunc("/api/folder-notes", a.handleFolderNotes)
 	mux.HandleFunc("/api/graph", a.handleGraph)
 	mux.HandleFunc("/api/preview", a.handlePreview)
@@ -1076,24 +1098,7 @@ func (a *App) handleNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(parts) >= 2 && parts[1] == "versions" {
-		if len(parts) == 2 {
-			a.handleNoteVersions(w, r, id)
-			return
-		}
-		versionID, parseErr := strconv.ParseInt(parts[2], 10, 64)
-		if parseErr != nil || versionID < 1 || len(parts) > 4 {
-			http.Error(w, "invalid version ID", http.StatusBadRequest)
-			return
-		}
-		if len(parts) == 3 {
-			a.handleNoteVersion(w, r, id, versionID)
-			return
-		}
-		if parts[3] != "restore" {
-			http.Error(w, "invalid note version endpoint", http.StatusBadRequest)
-			return
-		}
-		a.handleNoteVersionRestore(w, r, id, versionID)
+		http.Error(w, "note history is no longer available", http.StatusNotFound)
 		return
 	}
 	if len(parts) == 2 && parts[1] == "folder" {
@@ -1299,6 +1304,31 @@ func (a *App) handleFolderMove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	destination, count, err := a.MoveFolder(request.Source, request.Target)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"folder": destination, "moved": count})
+}
+
+func (a *App) handleFolderRename(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w)
+		return
+	}
+	var request struct {
+		Source string `json:"source"`
+		Name   string `json:"name"`
+	}
+	if err := decodeJSON(w, r, &request); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	destination, count, err := a.RenameFolder(request.Source, request.Name)
 	if errors.Is(err, sql.ErrNoRows) {
 		http.NotFound(w, r)
 		return
