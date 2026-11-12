@@ -939,6 +939,15 @@ func TestBackupRoundTripRestoresNotesAndAttachments(t *testing.T) {
 	if !entries["manifest.json"] || !entries[backupAttachmentPath(targetID, attachmentStorageName)] {
 		t.Fatalf("backup is missing expected entries: %#v", entries)
 	}
+	hasNoteFile := false
+	for name := range entries {
+		if strings.HasPrefix(name, "notes/") && strings.HasSuffix(name, ".md") {
+			hasNoteFile = true
+		}
+	}
+	if !hasNoteFile {
+		t.Fatalf("backup is missing note markdown files: %#v", entries)
+	}
 
 	// Restoring into an existing library must replace everything, including
 	// attachment files, without changing note or attachment IDs.

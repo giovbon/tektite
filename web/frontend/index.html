@@ -3,19 +3,30 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#0b0d12">
+    <meta name="theme-color" content="">
     <title>PKM Notes</title>
     <script>
         (() => {
             let theme = 'dark';
             try { theme = localStorage.getItem('theme') === 'light' ? 'light' : 'dark'; } catch {}
             document.documentElement.dataset.theme = theme;
-            document.querySelector('meta[name="theme-color"]').content = theme === 'light' ? '#f3f5f8' : '#0b0d12';
+            const syncThemeColor = () => {
+                const meta = document.querySelector('meta[name="theme-color"]');
+                const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+                if (meta && bg) meta.content = bg;
+            };
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', syncThemeColor, { once: true });
+            } else {
+                syncThemeColor();
+            }
         })();
     </script>
     <link rel="preload" href="/vendor/inter/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="/tokens.css">
-    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/styles/tokens.css">
+    <link rel="stylesheet" href="/styles/base.css">
+    <link rel="stylesheet" href="/styles/components.css">
+    <link rel="stylesheet" href="/styles/views.css">
     <script src="/vendor/highlight.js/highlight.min.js"></script>
     <script type="module" src="/src/main.js"></script>
 </head>
@@ -65,11 +76,12 @@
                 <input id="noteTitle" class="title-field" name="title" maxlength="256" placeholder="Título da nota" autocomplete="off">
             </div>
             <div class="topbar-actions">
-                <button class="button button-muted" id="exportBackup" type="button" title="Baixar um backup completo em .zip">Exportar</button>
-                <button class="button button-muted" id="importBackup" type="button" title="Restaurar um backup .zip substituindo os dados atuais">Importar</button>
+                <button class="icon-button command-trigger" id="commandButton" type="button" aria-label="Abrir paleta de comandos" aria-keyshortcuts="Control+K Meta+K" title="Paleta de comandos (Ctrl+K)">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+                </button>
                 <input id="backupInput" type="file" accept=".zip,application/zip" hidden>
-                <button class="button button-muted" id="logoutButton" type="button" hidden>Sair</button>
-                <button class="button button-primary" id="newNote" type="button"><span aria-hidden="true">＋</span> Nova nota</button>
+                <button class="button" data-variant="muted" id="logoutButton" type="button" hidden>Sair</button>
+                <button class="button" data-variant="primary" id="newNote" type="button"><span aria-hidden="true">＋</span> Nova nota</button>
                 <div class="topbar-editor-actions">
                     <span id="saveStatus" class="save-status" aria-live="polite"></span>
                     <button class="icon-button" id="historyButton" type="button" aria-label="Abrir histórico da nota" title="Histórico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/><path d="M12 7v5l3 2"/></svg></button>
@@ -84,7 +96,7 @@
                 <div class="search-box">
                     <span class="search-symbol" aria-hidden="true">⌕</span>
                     <input id="searchInput" type="search" autocomplete="off" placeholder="Pesquisar notas..." aria-label="Pesquisar notas">
-                    <span class="search-shortcut" aria-hidden="true">/</span>
+                    <kbd class="kbd search-shortcut" aria-hidden="true">/</kbd>
                 </div>
                 <div class="search-toolbar">
                     <div class="search-modes" role="group" aria-label="Modo de pesquisa">
@@ -104,9 +116,9 @@
                 </div>
                 <div id="notesList" class="notes-list" aria-live="polite"></div>
                 <nav class="pagination" id="pagination" aria-label="Paginação" hidden>
-                    <button class="button button-muted" id="previousPage" type="button">Anterior</button>
+                    <button class="button" data-variant="muted" id="previousPage" type="button">Anterior</button>
                     <span id="pageStatus"></span>
-                    <button class="button button-muted" id="nextPage" type="button">Próxima</button>
+                    <button class="button" data-variant="muted" id="nextPage" type="button">Próxima</button>
                 </nav>
             </section>
         </div>
@@ -115,13 +127,13 @@
             <header class="graph-header">
                 <div>
                     <h2>Grafo de notas</h2>
-                    <p id="graphSummary" aria-live="polite">Carregando relações…</p>
+                    <p id="graphSummary" aria-live="polite"><span class="skeleton skeleton-line" aria-hidden="true"></span></p>
                 </div>
                 <div class="graph-actions">
                     <label class="sr-only" for="graphSearch">Filtrar notas no grafo</label>
                     <input id="graphSearch" type="search" placeholder="Filtrar notas..." autocomplete="off">
-                    <button class="button button-muted" id="fitGraph" type="button" title="Ajustar grafo à tela">Ajustar</button>
-                    <button class="button button-muted" id="closeGraph" type="button">Voltar</button>
+                    <button class="button" data-variant="muted" id="fitGraph" type="button" title="Ajustar grafo à tela">Ajustar</button>
+                    <button class="button" data-variant="muted" id="closeGraph" type="button">Voltar</button>
                 </div>
             </header>
             <div class="graph-legend" aria-label="Tipos de relação">
@@ -184,7 +196,7 @@
             <ul id="attachmentList" class="attachment-list"></ul>
             <p id="attachmentsEmpty" class="attachments-empty">Nenhum anexo nesta nota.</p>
             <div class="attachments-dialog-actions">
-                <button class="button button-primary" id="addAttachment" type="button">Enviar arquivos</button>
+                <button class="button" data-variant="primary" id="addAttachment" type="button">Enviar arquivos</button>
                 <input id="attachmentInput" type="file" multiple hidden>
             </div>
         </dialog>
@@ -195,6 +207,22 @@
             </header>
             <ul id="historyList" class="history-list"></ul>
             <p id="historyEmpty" class="history-empty">Nenhuma versão anterior. O histórico começa na primeira edição.</p>
+        </dialog>
+        <dialog id="commandPalette" class="command-palette" aria-label="Paleta de comandos">
+            <h2 class="sr-only">Paleta de comandos</h2>
+            <div class="command-palette-search">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+                <input id="commandInput" type="text" autocomplete="off" placeholder="Buscar notas ou digitar um comando…" aria-label="Buscar notas ou comandos" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="commandList">
+                <kbd class="kbd" aria-hidden="true">Esc</kbd>
+                <button class="icon-button" data-command-close type="button" aria-label="Fechar paleta de comandos">×</button>
+            </div>
+            <div id="commandList" class="command-list" role="listbox" aria-label="Comandos e notas"></div>
+            <footer class="command-footer">
+                <span><kbd class="kbd">↑</kbd><kbd class="kbd">↓</kbd> navegar</span>
+                <span><kbd class="kbd">↵</kbd> abrir</span>
+                <span><kbd class="kbd">Esc</kbd> fechar</span>
+                <span><kbd class="kbd">Ctrl</kbd><kbd class="kbd">K</kbd> abrir</span>
+            </footer>
         </dialog>
         <div id="wikilinkAutocomplete" class="wikilink-autocomplete" role="listbox" aria-label="Notas para link" hidden></div>
         <div id="appMessage" class="app-message" role="status" aria-live="polite"></div>

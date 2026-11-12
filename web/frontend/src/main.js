@@ -1,4 +1,5 @@
 import { requestJSON } from './lib/api-client.js';
+import { CommandPalette } from './lib/command-palette.js';
 import { ensureFrontmatterTags, extractMarkdownOutline, frontmatterLineOffset, highlightMarkdown, MarkdownEditor, parseFrontmatter, stripFrontmatter } from './lib/markdown-editor.js';
 import { GraphView } from './lib/graph-view.js';
 import { highlightCode } from './lib/syntax-highlight.js';
@@ -41,6 +42,7 @@ const state = {
     searchTimer: null,
     saveTimer: null,
     savePromise: null,
+    notesLoaded: false,
     wikilinkRequestID: 0,
     wikilinkTimer: null,
     wikilinkAutocomplete: {
@@ -93,8 +95,6 @@ const elements = {
     appMessage: document.querySelector('#appMessage'),
     newNote: document.querySelector('#newNote'),
     deleteCurrentNote: document.querySelector('#deleteCurrentNote'),
-    exportBackup: document.querySelector('#exportBackup'),
-    importBackup: document.querySelector('#importBackup'),
     backupInput: document.querySelector('#backupInput')
 };
 
@@ -132,6 +132,15 @@ const markdownEditor = new MarkdownEditor(elements.noteContent, () => {
 }, updateEditorHistoryButtons);
 syncMarkdownHighlight();
 const graphView = new GraphView(document.querySelector('#noteGraph'), id => void openNote(id));
+const commandPalette = new CommandPalette({
+    dialog: document.querySelector('#commandPalette'),
+    input: document.querySelector('#commandInput'),
+    list: document.querySelector('#commandList'),
+    loadNotes: loadCommandNotes,
+    getCommands: buildCommandItems,
+    onNote: note => void openNote(note.id),
+    onError: error => showMessage(`Não foi possível executar o comando: ${error.message}`, 'error')
+});
 document.querySelector('#graphButton').addEventListener('click', () => {
     void openGraphView().catch(error => {
         showMessage(`Não foi possível abrir o grafo: ${error.message}`, 'error');
@@ -251,8 +260,7 @@ function setupEventListeners() {
     document.querySelector('#fitGraph').addEventListener('click', () => graphView.fit());
     document.querySelector('#graphSearch').addEventListener('input', event => graphView.setSearch(event.target.value));
     elements.newNote.addEventListener('click', () => openNewNote());
-    elements.exportBackup.addEventListener('click', () => void exportBackup());
-    elements.importBackup.addEventListener('click', () => elements.backupInput.click());
+    document.querySelector('#commandButton').addEventListener('click', () => void commandPalette.open());
     elements.backupInput.addEventListener('change', () => {
         const file = elements.backupInput.files?.[0];
         elements.backupInput.value = '';
@@ -429,6 +437,14 @@ function setupEventListeners() {
         }
     });
     document.addEventListener('keydown', event => {
+        if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'k') {
+            if (event.defaultPrevented) return;
+            event.preventDefault();
+            if (commandPalette.dialog.open) commandPalette.close();
+            else void commandPalette.open();
+            return;
+        }
+        if (commandPalette.dialog.open) return;
         if (event.key === '/' && state.view === 'list' && !isTypingTarget(event.target)) {
             event.preventDefault();
             (state.graphVisible ? document.querySelector('#graphSearch') : elements.searchInput).focus();
@@ -520,7 +536,7 @@ async function openGraphView() {
 
     const requestID = ++state.graphRequestID;
     const summary = document.querySelector('#graphSummary');
-    summary.textContent = 'Carregando relações…';
+    summary.innerHTML = '<span class="skeleton skeleton-line" aria-hidden="true"></span>';
     try {
         const graph = await requestJSON('/api/graph');
         if (requestID !== state.graphRequestID || !state.graphVisible) return;
@@ -579,9 +595,11 @@ async function loadNotes() {
         params.set('q', query);
         params.set('mode', state.mode);
     }
+    if (!state.notesLoaded) renderNoteSkeletons();
     try {
         const page = await requestJSON(`${endpoint}?${params}`);
         if (requestID !== state.requestID) return;
+        state.notesLoaded = true;
         if (page.total > 0 && state.offset >= page.total) {
             state.offset = Math.floor((page.total - 1) / pageSize) * pageSize;
             return loadNotes();
@@ -590,7 +608,13 @@ async function loadNotes() {
         state.total = page.total;
         renderNotes(page);
     } catch (error) {
-        if (requestID === state.requestID) showMessage(`Não foi possível carregar as notas: ${error.message}`, 'error');
+        if (requestID === state.requestID) {
+            if (!state.notesLoaded) {
+                state.notesLoaded = true;
+                elements.notesList.replaceChildren();
+            }
+            showMessage(`Não foi possível carregar as notas: ${error.message}`, 'error');
+        }
     }
 }
 
@@ -648,12 +672,11 @@ function renderNotes(page) {
     elements.clearFolder.hidden = !state.folder;
     elements.clearTag.hidden = !state.tag;
     if (page.items.length === 0) {
-        const empty = document.createElement('div');
-        empty.className = 'empty-state';
-        if (query) empty.textContent = 'Nenhuma nota corresponde à pesquisa.';
-        else if (state.tag) empty.textContent = `Nenhuma nota com a tag #${state.tag}.`;
-        else empty.textContent = 'Ainda não há notas. Crie uma para começar.';
-        elements.notesList.append(empty);
+        elements.notesList.append(createEmptyState({
+            query,
+            tag: state.tag,
+            folder: state.folder
+        }));
     } else {
         const contentSearch = Boolean(query && state.mode === 'content');
         for (const note of page.items) elements.notesList.append(createNoteCard(note, contentSearch));
@@ -667,9 +690,97 @@ function renderNotes(page) {
     elements.nextPage.disabled = page.offset + page.limit >= page.total;
 }
 
+function createEmptyState({ query, tag, folder }) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'empty-state';
+
+    const icon = document.createElement('div');
+    icon.className = 'empty-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    const title = document.createElement('h3');
+    const text = document.createElement('p');
+    const actions = document.createElement('div');
+    actions.className = 'empty-actions';
+
+    if (query) {
+        icon.innerHTML = '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>';
+        title.textContent = 'Nada encontrado';
+        text.textContent = `Não encontramos notas para “${query}”. Tente outro termo ou limpe os filtros.`;
+        actions.append(
+            emptyAction('Limpar filtros', 'muted', 'clear'),
+            emptyAction('Nova nota', 'primary', 'new')
+        );
+    } else if (tag) {
+        icon.innerHTML = '<svg viewBox="0 0 24 24"><path d="M4 4h7l9 9-7 7-9-9z"/><circle cx="8.5" cy="8.5" r="1.3"/></svg>';
+        title.textContent = `Nenhuma nota com #${tag}`;
+        text.textContent = 'Remova o filtro de tag ou crie uma nota com esta tag para começar.';
+        actions.append(
+            emptyAction('Limpar filtros', 'muted', 'clear'),
+            emptyAction('Nova nota', 'primary', 'new')
+        );
+    } else if (folder) {
+        icon.innerHTML = '<svg viewBox="0 0 24 24"><path d="M3.5 6.5h6l2 2h9v9a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><path d="M3.5 8.5v-2a2 2 0 0 1 2-2h3l2 2"/></svg>';
+        title.textContent = 'Esta pasta está vazia';
+        text.textContent = 'Crie uma nota aqui ou mova uma nota existente para esta pasta.';
+        actions.append(
+            emptyAction('Nova nota', 'primary', 'new'),
+            emptyAction('Limpar filtros', 'ghost', 'clear')
+        );
+    } else {
+        icon.innerHTML = '<svg viewBox="0 0 24 24"><path d="M5 2.5h8l4.5 4.5v15H5z"/><path d="M13 2.5V7h4.5M8 11h7m-7 3.5h7"/></svg>';
+        title.textContent = 'Seu espaço para pensar';
+        text.textContent = 'Crie sua primeira nota ou explore o grafo de relações. Tudo fica salvo localmente.';
+        actions.append(
+            emptyAction('Nova nota', 'primary', 'new'),
+            emptyAction('Explorar grafo', 'ghost', 'graph')
+        );
+    }
+
+    wrapper.append(icon, title, text, actions);
+    return wrapper;
+}
+
+function emptyAction(label, variant, action) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'button';
+    button.dataset.variant = variant;
+    button.dataset.emptyAction = action;
+    button.textContent = label;
+    return button;
+}
+
+function renderNoteSkeletons() {
+    elements.notesList.replaceChildren();
+    for (let index = 0; index < 4; index++) {
+        const card = document.createElement('div');
+        card.className = 'skeleton-card';
+        card.setAttribute('aria-hidden', 'true');
+        const title = document.createElement('span');
+        title.className = 'skeleton skeleton-line is-title';
+        const preview = document.createElement('span');
+        preview.className = 'skeleton skeleton-line';
+        preview.style.width = `${68 + index * 5}%`;
+        const meta = document.createElement('span');
+        meta.className = 'skeleton skeleton-line is-short';
+        card.append(title, preview, meta);
+        elements.notesList.append(card);
+    }
+}
+
+function skeletonLines(count) {
+    return Array.from({ length: count }, () => {
+        const line = document.createElement('span');
+        line.className = 'skeleton skeleton-line';
+        line.setAttribute('aria-hidden', 'true');
+        return line;
+    });
+}
+
+
 function createNoteCard(note, contentSearch) {
     const card = document.createElement('article');
-    card.className = `note-card${contentSearch ? ' is-content-result' : ''}`;
+    card.className = `note-card card${contentSearch ? ' is-content-result' : ''}`;
     card.dataset.noteId = String(note.id);
     const main = document.createElement('button');
     main.className = 'note-card-main';
@@ -745,6 +856,11 @@ function appendHighlightedPreview(container, text) {
 }
 
 function handleNoteListClick(event) {
+    const empty = event.target.closest('[data-empty-action]');
+    if (empty) {
+        void handleEmptyAction(empty.dataset.emptyAction);
+        return;
+    }
     const action = event.target.closest('[data-action]');
     const card = event.target.closest('[data-note-id]');
     if (!card || !action) return;
@@ -752,6 +868,26 @@ function handleNoteListClick(event) {
     if (action.dataset.action === 'open') void openNote(id);
     else if (action.dataset.action === 'tag') void selectTag(action.dataset.tag || '');
     else if (action.dataset.action === 'delete') void deleteNote(id);
+}
+
+async function handleEmptyAction(action) {
+    if (action === 'new') {
+        await openNewNote();
+        return;
+    }
+    if (action === 'graph') {
+        await openGraphView();
+        return;
+    }
+    if (action === 'clear') {
+        elements.searchInput.value = '';
+        state.tag = '';
+        state.folder = '';
+        state.offset = 0;
+        if (state.graphVisible) closeGraphView();
+        await loadNotes();
+        updateListHistory();
+    }
 }
 
 async function loadTags() {
@@ -773,23 +909,22 @@ function renderTagFilter() {
     for (const tag of tags) {
         const button = document.createElement('button');
         button.type = 'button';
-        button.className = `tag-filter${tag.name.toLowerCase() === state.tag.toLowerCase() ? ' is-active' : ''}`;
+        button.className = `chip tag-filter${tag.name.toLowerCase() === state.tag.toLowerCase() ? ' is-active' : ''}`;
         button.dataset.tag = tag.name;
         button.setAttribute('aria-pressed', String(tag.name.toLowerCase() === state.tag.toLowerCase()));
         button.title = `Filtrar por #${tag.name}`;
         const name = document.createElement('span');
         name.textContent = `#${tag.name}`;
         const count = document.createElement('span');
-        count.className = 'tag-filter-count';
+        count.className = 'chip-count tag-filter-count';
         count.textContent = String(tag.count);
         button.append(name, count);
         elements.tagFilterBar.append(button);
     }
 }
 
-async function exportBackup() {
-    const button = elements.exportBackup;
-    button.disabled = true;
+async function exportBackup(button = document.querySelector('#exportBackup')) {
+    if (button) button.disabled = true;
     try {
         const response = await fetch('/api/backup');
         if (response.status === 401) {
@@ -815,17 +950,16 @@ async function exportBackup() {
     } catch (error) {
         showMessage(`Não foi possível exportar o backup: ${error.message}`, 'error');
     } finally {
-        button.disabled = false;
+        if (button) button.disabled = false;
     }
 }
 
-async function importBackup(file) {
+async function importBackup(file, button = document.querySelector('#importBackup')) {
     if (!window.confirm(
         'Restaurar este backup substitui TODAS as notas, pastas, tags, histórico e anexos atuais.\n\n' +
         'Essa ação não pode ser desfeita. Deseja continuar?'
     )) return;
-    const button = elements.importBackup;
-    button.disabled = true;
+    if (button) button.disabled = true;
     try {
         window.clearTimeout(state.saveTimer);
         if (state.savePromise) await state.savePromise;
@@ -851,7 +985,7 @@ async function importBackup(file) {
     } catch (error) {
         showMessage(`Não foi possível restaurar o backup: ${error.message}`, 'error');
     } finally {
-        button.disabled = false;
+        if (button) button.disabled = false;
     }
 }
 
@@ -867,6 +1001,13 @@ async function loadHistory(noteID) {
     const requestID = ++state.historyRequestID;
     elements.historyList.replaceChildren();
     elements.historyEmpty.hidden = true;
+    for (let index = 0; index < 3; index++) {
+        const placeholder = document.createElement('li');
+        placeholder.className = 'history-item card';
+        placeholder.setAttribute('aria-hidden', 'true');
+        placeholder.append(...skeletonLines(2));
+        elements.historyList.append(placeholder);
+    }
     try {
         const versions = await requestJSON(`/api/notes/${noteID}/versions`);
         if (requestID !== state.historyRequestID || state.noteID !== noteID) return;
@@ -874,6 +1015,7 @@ async function loadHistory(noteID) {
         renderHistory(noteID, versions);
     } catch (error) {
         if (requestID !== state.historyRequestID) return;
+        elements.historyList.replaceChildren();
         elements.historyEmpty.hidden = false;
         elements.historyEmpty.textContent = `Não foi possível carregar o histórico: ${error.message}`;
     }
@@ -889,7 +1031,7 @@ function renderHistory(noteID, versions) {
     elements.historyEmpty.hidden = true;
     for (const version of versions) {
         const item = document.createElement('li');
-        item.className = 'history-item';
+        item.className = 'history-item card';
 
         const header = document.createElement('div');
         header.className = 'history-item-header';
@@ -2124,15 +2266,52 @@ function togglePanel(name) {
         elements.panelTitle.textContent = 'Sumário';
         renderOutlinePanel();
     } else if (name === 'settings') {
-        elements.panelTitle.textContent = 'Configurações';
-        const placeholder = document.createElement('p');
-        placeholder.className = 'settings-placeholder';
-        placeholder.textContent = 'As configurações da aplicação aparecerão aqui.';
-        elements.panelContent.replaceChildren(placeholder);
+        renderSettingsPanel();
     } else {
         elements.panelTitle.textContent = 'Pastas e notas';
         renderFolderPanel();
     }
+}
+
+function renderSettingsPanel() {
+    elements.panelTitle.textContent = 'Configurações';
+
+    const container = document.createElement('div');
+    container.className = 'settings-panel';
+
+    const section = document.createElement('section');
+    section.className = 'settings-section';
+
+    const heading = document.createElement('h3');
+    heading.textContent = 'Backup e restauração';
+
+    const description = document.createElement('p');
+    description.className = 'settings-description';
+    description.textContent = 'Baixe um arquivo .zip com todas as notas em Markdown, pastas, tags, histórico e anexos, ou restaure um backup substituindo os dados atuais.';
+
+    const actions = document.createElement('div');
+    actions.className = 'settings-actions';
+
+    const exportButton = document.createElement('button');
+    exportButton.type = 'button';
+    exportButton.id = 'exportBackup';
+    exportButton.className = 'button';
+    exportButton.dataset.variant = 'muted';
+    exportButton.textContent = 'Exportar backup';
+    exportButton.addEventListener('click', () => void exportBackup(exportButton));
+
+    const importButton = document.createElement('button');
+    importButton.type = 'button';
+    importButton.id = 'importBackup';
+    importButton.className = 'button';
+    importButton.dataset.variant = 'muted';
+    importButton.textContent = 'Importar backup';
+    importButton.addEventListener('click', () => elements.backupInput.click());
+
+    actions.append(exportButton, importButton);
+    section.append(heading, description, actions);
+    container.append(section);
+    elements.panelContent.replaceChildren(container);
 }
 
 function getWorkspacePanelWidthBounds() {
@@ -2248,7 +2427,8 @@ function renderBacklinksPanel(errorMessage = '') {
     if (state.backlinks === null) {
         const loading = document.createElement('div');
         loading.className = 'backlinks-panel-empty';
-        loading.textContent = 'Carregando backlinks…';
+        loading.setAttribute('aria-label', 'Carregando backlinks');
+        loading.append(...skeletonLines(3));
         elements.panelContent.append(loading);
         return;
     }
@@ -2446,7 +2626,7 @@ function makeExpandButton(folderPath, label) {
     const expanded = state.expandedFolders.has(folderPath);
     expand.setAttribute('aria-label', `${expanded ? 'Recolher' : 'Expandir'} ${label}`);
     expand.setAttribute('aria-expanded', String(expanded));
-    expand.textContent = expanded ? '⌄' : '›';
+    expand.textContent = '›';
     return expand;
 }
 
@@ -2525,7 +2705,8 @@ function renderDirectNotes(folder, root) {
         void loadFolderNotes(folder);
         const loading = document.createElement(root ? 'p' : 'li');
         loading.className = 'tree-loading';
-        loading.textContent = 'Carregando…';
+        loading.setAttribute('aria-label', 'Carregando notas');
+        loading.append(...skeletonLines(2));
         list.append(loading);
         return list;
     }
@@ -2797,26 +2978,133 @@ async function selectFolder(folder) {
     if (elements.panel.dataset.panel === 'files') renderFolderPanel();
 }
 
+function syncThemeColor() {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+    if (meta && bg) meta.content = bg;
+}
+
 function setupTheme() {
     const saved = localStorage.getItem('theme');
     document.documentElement.dataset.theme = saved === 'light' ? 'light' : 'dark';
+    syncThemeColor();
 }
 
 function toggleTheme() {
     const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
     document.documentElement.dataset.theme = next;
     localStorage.setItem('theme', next);
+    syncThemeColor();
 }
+
+function buildCommandItems(query) {
+    const themeLabel = document.documentElement.dataset.theme === 'light' ? 'Ativar tema escuro' : 'Ativar tema claro';
+    const commands = [
+        {
+            title: 'Nova nota',
+            subtitle: 'Criar uma nota em branco',
+            icon: 'plus',
+            hint: 'Ctrl N',
+            keywords: 'criar adicionar',
+            run: () => openNewNote()
+        },
+        {
+            title: 'Abrir grafo de notas',
+            subtitle: 'Explorar relações e backlinks',
+            icon: 'graph',
+            keywords: 'relações conexões',
+            run: () => openGraphView()
+        },
+        {
+            title: 'Todas as notas',
+            subtitle: 'Voltar para a lista principal',
+            icon: 'list',
+            keywords: 'início lista',
+            run: () => showAllNotes()
+        },
+        {
+            title: 'Pesquisar notas',
+            subtitle: 'Ir para o campo de busca',
+            icon: 'search',
+            hint: '/',
+            keywords: 'buscar procurar',
+            run: () => showAllNotes()
+        },
+        {
+            title: themeLabel,
+            subtitle: 'Alternar entre claro e escuro',
+            icon: 'theme',
+            keywords: 'tema cores',
+            run: () => toggleTheme()
+        },
+        {
+            title: 'Exportar backup',
+            subtitle: 'Baixar notas, pastas e anexos em .zip',
+            icon: 'download',
+            keywords: 'salvar baixar',
+            run: () => exportBackup()
+        },
+        {
+            title: 'Importar backup',
+            subtitle: 'Restaurar um arquivo .zip',
+            icon: 'upload',
+            keywords: 'restaurar carregar',
+            run: () => elements.backupInput.click()
+        }
+    ];
+    const normalized = query.toLocaleLowerCase();
+    if (!normalized) return commands;
+    return commands.filter(command =>
+        `${command.title} ${command.subtitle || ''} ${command.keywords || ''}`
+            .toLocaleLowerCase()
+            .includes(normalized)
+    );
+}
+
+async function loadCommandNotes(query) {
+    const params = new URLSearchParams({ limit: '8', offset: '0' });
+    let endpoint = '/api/notes';
+    if (query) {
+        params.set('q', query);
+        params.set('mode', 'title');
+        endpoint = '/api/search';
+    }
+    const page = await requestJSON(`${endpoint}?${params}`);
+    return Array.isArray(page.items) ? page.items : [];
+}
+
+const messageIcons = {
+    error: '<svg viewBox="0 0 24 24"><path d="M12 8v5m0 3.5v.1M10.3 3.7 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.7a2 2 0 0 0-3.4 0Z"/></svg>',
+    success: '<svg viewBox="0 0 24 24"><path d="m5 12.5 4.2 4.2L19 7"/></svg>',
+    info: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8.5v.1"/></svg>'
+};
 
 function showMessage(message, kind = '') {
     window.clearTimeout(showMessage.clearTimer);
-    elements.appMessage.textContent = message;
-    elements.appMessage.className = `app-message${kind ? ` is-${kind}` : ''}`;
+    elements.appMessage.replaceChildren();
     if (!message) return;
+    const toast = document.createElement('div');
+    toast.className = `toast${kind ? ` is-${kind}` : ''}`;
+    toast.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+    const icon = document.createElement('span');
+    icon.className = 'toast-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.innerHTML = messageIcons[kind] || messageIcons.info;
+    const text = document.createElement('span');
+    text.className = 'toast-message';
+    text.textContent = message;
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'toast-close';
+    close.setAttribute('aria-label', 'Fechar aviso');
+    close.textContent = '×';
+    close.addEventListener('click', () => {
+        window.clearTimeout(showMessage.clearTimer);
+        toast.remove();
+    });
+    toast.append(icon, text, close);
+    elements.appMessage.append(toast);
     showMessage.clearTimer = window.setTimeout(() => {
-        if (elements.appMessage.textContent === message) {
-            elements.appMessage.textContent = '';
-            elements.appMessage.className = 'app-message';
-        }
+        toast.remove();
     }, kind === 'success' ? 2800 : 6000);
 }

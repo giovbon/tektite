@@ -34,8 +34,8 @@ button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px
     flex: 0 0 auto;
     place-items: center;
     border-radius: var(--radius-lg);
-    color: #fff;
-    background: linear-gradient(145deg, #6ea8ff, #7066d8);
+    color: var(--accent-contrast);
+    background: var(--brand-gradient);
     box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 28%, transparent);
     font-size: var(--text-lg);
     font-weight: 800;
@@ -61,7 +61,7 @@ form {
     border: 1px solid var(--border);
     border-radius: var(--radius-xl);
     background: var(--surface);
-    box-shadow: var(--shadow-lg);
+    box-shadow: inset 0 1px 0 var(--card-highlight), var(--shadow-lg);
 }
 
 label {
@@ -89,20 +89,15 @@ input:focus {
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
-button {
+form .button {
+    width: 100%;
     min-height: 42px;
-    border: 1px solid var(--accent-solid-border);
-    border-radius: var(--radius-control);
-    color: var(--accent-contrast);
-    background: var(--accent-solid);
-    font: inherit;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background var(--duration-fast) var(--ease-standard);
 }
 
-button:hover { background: var(--accent-solid-hover); }
-button:disabled { opacity: .6; cursor: wait; }
+form .button:disabled {
+    opacity: .6;
+    cursor: wait;
+}
 
 #message {
     min-height: 18px;

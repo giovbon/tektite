@@ -21,6 +21,17 @@
         transition: var(--transition-colors), transform var(--duration-fast) var(--ease-standard);
     }
 
+    .button svg {
+        width: 15px;
+        height: 15px;
+        flex: none;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
+
     .button:hover:not(:disabled) {
         transform: translateY(-1px);
     }
@@ -315,6 +326,30 @@
         width: 28%;
     }
 
+    .skeleton-card {
+        display: grid;
+        gap: 9px;
+        padding: 14px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-card);
+        background: var(--surface);
+        box-shadow: inset 0 1px 0 var(--card-highlight);
+        pointer-events: none;
+    }
+
+    .skeleton-card .skeleton-line.is-title {
+        height: 14px;
+    }
+
+    .skeleton-card .skeleton-line.is-short {
+        height: 9px;
+    }
+
+    .backlinks-panel-empty .skeleton-line,
+    .outline-panel-empty .skeleton-line {
+        width: 82%;
+    }
+
     .empty-state {
         display: grid;
         justify-items: center;
@@ -589,11 +624,44 @@
         font-weight: 600;
     }
 
-    .settings-placeholder {
-        margin: 8px;
+    .settings-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        padding: 12px 8px;
+    }
+
+    .settings-section {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .settings-section h3 {
+        margin: 0;
+        color: var(--text);
+        font-size: var(--text-sm);
+        font-weight: 600;
+    }
+
+    .settings-description {
+        margin: 0;
         color: var(--muted);
         font-size: var(--text-sm);
         line-height: var(--leading-normal);
+    }
+
+    .settings-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 4px;
+    }
+
+    .settings-actions .button {
+        flex: 1 1 auto;
+        justify-content: center;
+        white-space: nowrap;
     }
 
     .tree-root-row {

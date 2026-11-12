@@ -59,6 +59,8 @@ Para ARM64, compile nativamente no dispositivo ou configure um compilador C cruz
 - Duas abas do navegador não sobrescrevem mais uma à outra silenciosamente: o editor envia a versão da nota junto com o salvamento e o servidor responde `409 Conflict` quando outra sessão já alterou o registro.
 - Exportação e restauração de backup completo em um único arquivo `.zip`, com notas, pastas, tags, vínculos, histórico e anexos.
 - Interface adaptada para desktop e mobile; tema claro/escuro.
+- Design system em CSS puro, sem etapa de build: tokens em `web/frontend/styles/tokens.css`, base em `base.css`, componentes reutilizáveis em `components.css` e layouts de tela em `views.css`. Os temas claro e escuro, foco, movimento reduzido, tipografia e cores de sintaxe são derivados dos mesmos tokens.
+- Paleta de comandos com `Ctrl/Cmd+K` para criar notas, navegar entre telas, alternar o tema, exportar/importar backups e abrir notas por busca instantânea. A paleta também pode ser aberta pelo botão de busca na barra superior.
 
 O preview usa Goldmark no backend. HTML bruto é mantido inativo e destinos com esquemas inseguros em links/imagens são neutralizados.
 
@@ -67,7 +69,7 @@ O preview usa Goldmark no backend. HTML bruto é mantido inativo e destinos com 
 - As notas, pastas vazias e metadados ficam em `notes.db` no diretório de dados. Os caminhos das pastas associadas às notas também são mantidos nas próprias notas. O índice de busca FTS5 e o índice de vínculos (`note_links`) são mantidos no mesmo banco. O grafo e os backlinks são resolvidos a partir desse índice, sem reler o conteúdo de todas as notas a cada consulta. O histórico de versões fica na tabela `note_versions` do mesmo banco.
 - Anexos são gravados em `attachments/<id-da-nota>/` no mesmo diretório de dados. O nome físico é aleatório; o nome original e o tipo de mídia ficam nos metadados SQLite. Assim, mover a nota para outra pasta virtual não move nem quebra o arquivo.
 - Ao excluir uma nota, seus metadados de anexos são removidos pelo SQLite e os arquivos daquela nota são apagados do disco.
-- Use **Exportar** na barra superior para baixar um `.zip` com `manifest.json` e todos os anexos. **Importar** valida o arquivo e substitui notas, pastas, tags, histórico e anexos atuais; IDs de notas e anexos são preservados para que os links dentro do conteúdo continuem funcionando. A importação é tudo ou nada: um arquivo inválido não altera os dados existentes.
+- Use **Configurações → Backup e restauração** para exportar ou importar um `.zip`. A exportação inclui `manifest.json`, cada nota como um arquivo Markdown legível em `notes/` e todos os anexos em `attachments/`. A importação valida o arquivo e substitui notas, pastas, tags, histórico e anexos atuais; IDs de notas e anexos são preservados para que os links dentro do conteúdo continuem funcionando. A importação é tudo ou nada: um arquivo inválido não altera os dados existentes.
 - Para backup manual, ainda é possível parar o servidor e copiar **o arquivo `notes.db` e a pasta `attachments/` juntos**. Restaurar somente o banco preserva as referências, mas não recupera o conteúdo dos arquivos; restaurar somente os anexos não recupera as notas nem os metadados.
 - As pastas exibidas na árvore são virtuais: não são criadas como diretórios no disco. Apenas os anexos usam armazenamento em arquivos.
 

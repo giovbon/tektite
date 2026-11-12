@@ -111,6 +111,7 @@
         --shadow-md: 0 8px 24px #0006;
         --shadow-lg: 0 18px 60px #0008;
         --shadow-card-hover: 0 6px 18px #0005;
+        --shadow-panel-up: 0 -14px 36px #0005;
 
         /* Motion */
         --duration-fast: .16s;
@@ -175,5 +176,6 @@
         --shadow-md: 0 8px 24px #00000018;
         --shadow-lg: 0 18px 60px #0000002e;
         --shadow-card-hover: 0 6px 18px #00000016;
+        --shadow-panel-up: 0 -14px 36px #00000018;
     }
 }

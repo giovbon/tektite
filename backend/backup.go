@@ -209,6 +209,21 @@ func (a *App) ExportBackup(destination io.Writer) error {
 	if err := encoder.Encode(manifest); err != nil {
 		return err
 	}
+	for _, note := range manifest.Notes {
+		header := &zip.FileHeader{
+			Name:     backupNotePath(note),
+			Method:   zip.Deflate,
+			Modified: time.Now(),
+		}
+		header.SetMode(0600)
+		writer, err := archive.CreateHeader(header)
+		if err != nil {
+			return err
+		}
+		if _, err := io.WriteString(writer, note.Content); err != nil {
+			return err
+		}
+	}
 	for _, file := range files {
 		header := &zip.FileHeader{
 			Name:     backupAttachmentPath(file.meta.NoteID, file.meta.StorageName),
@@ -234,6 +249,27 @@ func (a *App) ExportBackup(destination io.Writer) error {
 		}
 	}
 	return archive.Close()
+}
+
+func backupNotePath(note backupNote) string {
+	name := strings.Map(func(r rune) rune {
+		switch r {
+		case '/', '\\', ':', '*', '?', '"', '<', '>', '|':
+			return '-'
+		}
+		if r < 0x20 || r == 0x7f {
+			return '-'
+		}
+		return r
+	}, strings.TrimSpace(note.Title))
+	name = strings.Trim(name, " .-")
+	if runes := []rune(name); len(runes) > 80 {
+		name = string(runes[:80])
+	}
+	if name == "" {
+		return fmt.Sprintf("notes/%d.md", note.ID)
+	}
+	return fmt.Sprintf("notes/%d - %s.md", note.ID, name)
 }
 
 func backupAttachmentPath(noteID int64, storageName string) string {
