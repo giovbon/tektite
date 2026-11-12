@@ -6,7 +6,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
-REPO_NAME="giovoni/tektite"
+REPO_NAME="giovoni/pkm-notes"
 IMAGE_TAG="latest"
 
 # Cores para output
@@ -58,7 +58,7 @@ build_image() {
     local platform="$1"
     local arch="$2"
     
-    print_info "Construindo imagem para ${platform}/${arch}..."
+    print_info "Construindo imagem para ${platform}/${arch} com SQLite FTS5..."
     
     docker buildx build --platform "$platform" \
         --build-arg TARGETOS="linux" \

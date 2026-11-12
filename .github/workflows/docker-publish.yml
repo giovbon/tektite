@@ -31,7 +31,7 @@ jobs:
         run: go vet ./...
 
       - name: Go test
-        run: go test ./...
+        run: go test -tags sqlite_fts5 ./...
 
       - name: Set up Node
         uses: actions/setup-node@v7
@@ -76,8 +76,8 @@ jobs:
       - name: Build Multi-Arch Binaries
         run: |
           mkdir -p bin
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o bin/pkm-notes-backend-amd64 ./backend
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o bin/pkm-notes-backend-arm64 ./backend
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -tags sqlite_fts5 -o bin/pkm-notes-backend-amd64 ./backend
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -tags sqlite_fts5 -o bin/pkm-notes-backend-arm64 ./backend
           ls -lh bin/
           # Fail the workflow if any artifact is not an ELF binary
           for f in bin/pkm-notes-backend-*; do

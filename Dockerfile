@@ -23,17 +23,18 @@ COPY . .
 # 1. Compilar para múltiplas arquiteturas, suportando arm64 (ARM 64-bit)
 RUN set -e; \
     ARCH="${TARGETARCH:-$(go env GOARCH)}"; \
-    echo "Compilando nativamente para ${TARGETOS:-linux}/${ARCH}"; \
+    echo "Compilando nativamente para ${TARGETOS:-linux}/${ARCH} com SQLite FTS5"; \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${ARCH} go build \
         -trimpath \
         -ldflags="-s -w" \
+        -tags sqlite_fts5 \
         -o /pkm-notes-backend ./backend; \
     if ! head -c 4 /pkm-notes-backend | grep -q "ELF"; then \
         echo "ERRO: /pkm-notes-backend nao e um executavel ELF."; \
         echo "O pacote main nao foi compilado - verifique o caminho ./backend no Dockerfile."; \
         exit 1; \
     fi; \
-    echo "OK: binario ELF gerado para ${TARGETOS:-linux}/${ARCH}"
+    echo "OK: binario ELF gerado para ${TARGETOS:-linux}/${ARCH} com SQLite FTS5"
 
 # -----------------------------------------------------------------------------
 # Stage 2: Runtime Minimal
