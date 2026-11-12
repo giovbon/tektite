@@ -2,7 +2,7 @@
 
 Aplicação local de notas Markdown com backend Go, SQLite/FTS5 e interface responsiva. As pastas são caminhos virtuais armazenados no SQLite; o app não cria arquivos `.md` no disco.
 
-## Requisitos
+## Requisitoss
 
 - Go 1.21 ou superior.
 - Um compilador C disponível para o `cgo` (o driver SQLite compila o SQLite junto ao binário).
