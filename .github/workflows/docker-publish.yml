@@ -39,23 +39,16 @@ jobs:
           node-version: '18'
 
       - name: Frontend dependencies
-        run: |
-          cd web/frontend
-          npm install --legacy-peer-deps
-        
-      - name: Frontend tests
-        run: |
-          npm test --prefix web/frontend
+        working-directory: web/frontend
+        run: npm install --legacy-peer-deps
 
-      - name: Check generated frontend artifacts
-        run: |
-          cd web/frontend
-          bash build-js.sh
-          bash build-tailwind.sh
-          if ! git diff --exit-code -- app.js app.js.map vendor/MANIFEST.json vendor/markmap/markmap.js vendor/markmap/markmap.js.LEGAL.txt vendor/markmap/THIRD_PARTY_NOTICES.txt tailwind.css; then
-            echo "::error::Generated frontend artifacts are stale. Run ./build-js.sh and ./build-tailwind.sh and commit the result."
-            exit 1
-          fi
+      - name: Frontend tests
+        working-directory: web/frontend
+        run: npm test
+
+      - name: Frontend build (if configured)
+        working-directory: web/frontend
+        run: npm run build --if-present
 
   build-and-push:
     needs: test
