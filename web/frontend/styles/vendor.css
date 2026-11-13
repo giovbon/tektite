@@ -1,0 +1,3 @@
+/* Third-party styles are imported into their own cascade layer so the app
+   stylesheet can override Tabulator's defaults without !important rules. */
+@import url("/vendor/tabulator/tabulator_simple.min.css") layer(vendor);

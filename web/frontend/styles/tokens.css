@@ -1,7 +1,7 @@
 /* Design tokens, local font faces and cascade layer order.
    Loaded before every other stylesheet. */
 
-@layer tokens, base, components, views;
+@layer vendor, tokens, base, components, views;
 
 @font-face {
     font-family: "Inter";

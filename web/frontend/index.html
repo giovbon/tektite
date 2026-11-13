@@ -8,10 +8,12 @@
     <script src="/src/theme-init.js"></script>
     <link rel="preload" href="/vendor/inter/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="/styles/tokens.css">
+    <link rel="stylesheet" href="/styles/vendor.css">
     <link rel="stylesheet" href="/styles/base.css">
     <link rel="stylesheet" href="/styles/components.css">
     <link rel="stylesheet" href="/styles/views.css">
     <script src="/vendor/highlight.js/highlight.min.js"></script>
+    <script src="/vendor/tabulator/tabulator.min.js"></script>
     <script type="module" src="/src/main.js"></script>
 </head>
 <body class="panel-open">
@@ -85,13 +87,14 @@
                     <div class="search-modes" role="group" aria-label="Modo de pesquisa">
                         <button class="mode-button is-active" type="button" data-mode="title" aria-pressed="true">Títulos</button>
                         <button class="mode-button" type="button" data-mode="content" aria-pressed="false">Conteúdo</button>
+                        <button class="mode-button" type="button" data-mode="table" aria-pressed="false">Tabela</button>
                     </div>
                     <div class="result-count" id="resultCount" aria-live="polite"></div>
                 </div>
                 <div class="tag-filter-bar" id="tagFilterBar" aria-label="Filtrar por tag" hidden></div>
             </section>
 
-            <section class="results-section" aria-label="Resultados">
+            <section id="resultsSection" class="results-section" aria-label="Resultados">
                 <div class="results-heading">
                     <h2 id="resultsTitle">Todas as notas</h2>
                     <button class="text-button" id="clearTag" type="button" hidden>Limpar tag</button>
@@ -103,6 +106,29 @@
                     <span id="pageStatus"></span>
                     <button class="button" data-variant="muted" id="nextPage" type="button">Próxima</button>
                 </nav>
+            </section>
+
+            <section id="tableView" class="table-view" aria-label="Tabela de notas" hidden>
+                <div class="table-card">
+                    <div class="table-card-top">
+                        <div class="table-heading">
+                            <h2>Todas as notas</h2>
+                            <span class="table-badge">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h14"/><circle cx="8" cy="7" r="1.2"/><circle cx="8" cy="12" r="1.2"/><circle cx="8" cy="17" r="1.2"/></svg>
+                                Tabulator
+                            </span>
+                            <span class="table-meta" id="tableColumnsInfo"></span>
+                        </div>
+                        <div class="table-summary" id="tableSummary" aria-live="polite"></div>
+                    </div>
+                    <div id="notesTableHost" class="notes-table-host">
+                        <div id="notesTable" class="notes-table"></div>
+                    </div>
+                    <footer class="table-footer">
+                        <span id="tableFooterInfo">Colunas geradas do frontmatter</span>
+                        <span>Clique em uma nota para abrir; expanda para ver os anexos.</span>
+                    </footer>
+                </div>
             </section>
         </div>
 

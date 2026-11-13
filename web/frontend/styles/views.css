@@ -1110,9 +1110,467 @@
         font-variant-numeric: tabular-nums;
     }
 
+    /* ---------- Tabulator table view ---------- */
+
+    .table-view {
+        width: min(100%, 1240px);
+        margin: 10px auto 32px;
+    }
+
+    .table-card {
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-xl);
+        background: color-mix(in srgb, var(--surface) 92%, transparent);
+        box-shadow: var(--shadow-lg);
+    }
+
+    .table-card-top {
+        display: flex;
+        min-height: 52px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 8px 16px 8px 18px;
+        border-bottom: 1px solid var(--border);
+        background: color-mix(in srgb, var(--surface-raised) 52%, transparent);
+    }
+
+    .table-heading {
+        display: flex;
+        min-width: 0;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .table-heading h2 {
+        margin: 0;
+        color: var(--text);
+        font-size: var(--text-base);
+        font-weight: 650;
+        letter-spacing: -0.01em;
+    }
+
+    .table-badge {
+        display: inline-flex;
+        height: 21px;
+        align-items: center;
+        gap: 5px;
+        padding: 0 7px;
+        border: 1px solid color-mix(in srgb, var(--graph-wikilink) 38%, transparent);
+        border-radius: var(--radius-xs);
+        color: var(--graph-wikilink);
+        background: color-mix(in srgb, var(--graph-wikilink) 12%, transparent);
+        font-size: var(--text-2xs);
+        font-weight: 600;
+        letter-spacing: .02em;
+    }
+
+    .table-badge svg {
+        width: 11px;
+        height: 11px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.8;
+    }
+
+    .table-meta,
+    .table-summary {
+        color: var(--muted);
+        font-size: var(--text-xs);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .table-summary {
+        flex: none;
+        white-space: nowrap;
+    }
+
+    .table-footer {
+        display: flex;
+        min-height: 44px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 0 16px;
+        border-top: 1px solid var(--border);
+        color: var(--faint);
+        background: color-mix(in srgb, var(--surface-raised) 30%, transparent);
+        font-size: var(--text-xs);
+    }
+
+    .notes-table-host {
+        position: relative;
+        width: 100%;
+        height: calc(100vh - 360px);
+        min-height: 320px;
+    }
+
+    .notes-table {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        background: transparent;
+    }
+
+    .notes-table .tabulator {
+        border: 0 !important;
+        color: var(--text) !important;
+        background: transparent !important;
+        font-family: var(--font-sans) !important;
+        font-size: var(--text-sm) !important;
+    }
+
+    .notes-table .tabulator .tabulator-header {
+        border-bottom: 1px solid var(--border) !important;
+        color: var(--faint) !important;
+        background: color-mix(in srgb, var(--surface-raised) 40%, transparent) !important;
+    }
+
+    .notes-table .tabulator .tabulator-header .tabulator-col {
+        border-right: 0 !important;
+        background: transparent !important;
+    }
+
+    .notes-table .tabulator .tabulator-col-content {
+        padding: 0 12px !important;
+    }
+
+    .notes-table .tabulator .tabulator-col-title {
+        color: var(--faint) !important;
+        font-size: var(--text-2xs) !important;
+        font-weight: 600 !important;
+        letter-spacing: .045em !important;
+        text-transform: uppercase !important;
+    }
+
+    .notes-table .tabulator .tabulator-col .tabulator-arrow {
+        border-bottom-color: var(--faint) !important;
+    }
+
+    .notes-table .tabulator .tabulator-col.tabulator-sortable:hover {
+        background: color-mix(in srgb, var(--surface-hover) 65%, transparent) !important;
+    }
+
+    .notes-table .tabulator .tabulator-tableholder {
+        scrollbar-color: var(--scrollbar-thumb) transparent !important;
+        scrollbar-width: thin !important;
+    }
+
+    .notes-table .tabulator .tabulator-tableholder .tabulator-table {
+        background: transparent !important;
+        color: var(--text) !important;
+    }
+
+    .notes-table .tabulator .tabulator-row {
+        border-bottom: 1px solid color-mix(in srgb, var(--border) 68%, transparent) !important;
+        color: var(--muted) !important;
+        background: transparent !important;
+    }
+
+    .notes-table .tabulator .tabulator-row.tabulator-row-even {
+        background: color-mix(in srgb, var(--surface-raised) 18%, transparent) !important;
+    }
+
+    .notes-table .tabulator .tabulator-row:hover {
+        background: color-mix(in srgb, var(--surface-hover) 72%, transparent) !important;
+    }
+
+    .notes-table .tabulator .tabulator-row .tabulator-cell {
+        border-right: 0 !important;
+        padding: 0 12px !important;
+        background: transparent !important;
+    }
+
+    .notes-table .tabulator .tabulator-row.tabulator-tree-level-1,
+    .notes-table .tabulator .tabulator-row.is-attachment-row {
+        background: color-mix(in srgb, var(--bg) 62%, transparent) !important;
+    }
+
+    .notes-table .tabulator .tabulator-row.tabulator-tree-level-1:hover,
+    .notes-table .tabulator .tabulator-row.is-attachment-row:hover {
+        background: color-mix(in srgb, var(--surface-hover) 55%, transparent) !important;
+    }
+
+    .notes-table .tabulator .tabulator-data-tree-control {
+        width: 18px;
+        height: 18px;
+        border: 1px solid var(--border) !important;
+        border-radius: var(--radius-xs) !important;
+        background: var(--surface-raised) !important;
+    }
+
+    .notes-table .tabulator .tabulator-data-tree-control:hover {
+        border-color: var(--accent) !important;
+        background: var(--accent-soft) !important;
+    }
+
+    .notes-table .tabulator .tabulator-data-tree-control .tabulator-data-tree-control-collapse,
+    .notes-table .tabulator .tabulator-data-tree-control .tabulator-data-tree-control-expand {
+        border-color: var(--muted) !important;
+    }
+
+    .notes-table .tabulator .tabulator-placeholder {
+        color: var(--muted) !important;
+        background: transparent !important;
+    }
+
+    .notes-table .tabulator .tabulator-placeholder-contents {
+        padding: 28px;
+        font-size: var(--text-sm);
+        text-align: center;
+        background: transparent !important;
+    }
+
+    .table-title-cell {
+        display: flex;
+        min-width: 0;
+        align-items: center;
+        gap: 9px;
+    }
+
+    .table-cell-icon {
+        display: inline-flex;
+        width: 26px;
+        height: 26px;
+        flex: none;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        color: var(--accent);
+        background: color-mix(in srgb, var(--accent) 8%, transparent);
+    }
+
+    .table-cell-icon svg {
+        width: 13px;
+        height: 13px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.6;
+    }
+
+    .table-cell-icon.is-pdf {
+        color: var(--danger);
+        background: color-mix(in srgb, var(--danger) 8%, transparent);
+    }
+
+    .table-cell-icon.is-image {
+        color: var(--graph-wikilink);
+        background: color-mix(in srgb, var(--graph-wikilink) 8%, transparent);
+    }
+
+    .table-cell-icon.is-text {
+        color: var(--accent);
+    }
+
+    .table-title-copy {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        gap: 1px;
+    }
+
+    .table-note-link {
+        overflow: hidden;
+        padding: 0;
+        border: 0;
+        color: var(--text);
+        background: transparent;
+        font: inherit;
+        font-weight: 560;
+        text-align: left;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        cursor: pointer;
+    }
+
+    .table-note-link:hover {
+        color: var(--accent);
+        text-decoration: underline;
+    }
+
+    .table-note-sub {
+        color: var(--faint);
+        font-size: var(--text-2xs);
+    }
+
+    .table-file-name {
+        overflow: hidden;
+        color: var(--text);
+        font-weight: 500;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .table-file-type {
+        display: inline-flex;
+        height: 18px;
+        flex: none;
+        align-items: center;
+        padding: 0 6px;
+        border-radius: var(--radius-xs);
+        color: var(--faint);
+        background: color-mix(in srgb, var(--text) 5%, transparent);
+        font-size: 9px;
+        font-weight: 600;
+        letter-spacing: .04em;
+    }
+
+    .table-file-size {
+        flex: none;
+        color: var(--faint);
+        font-size: var(--text-xs);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .table-folder-cell {
+        display: flex;
+        min-width: 0;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .table-folder-cell svg {
+        width: 13px;
+        height: 13px;
+        flex: none;
+        fill: none;
+        stroke: var(--faint);
+        stroke-width: 1.6;
+    }
+
+    .table-folder-cell span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .table-empty-value {
+        color: var(--faint);
+    }
+
+    .table-tag-list {
+        display: flex;
+        min-width: 0;
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+
+    .table-tag {
+        display: inline-flex;
+        height: 20px;
+        max-width: 130px;
+        align-items: center;
+        overflow: hidden;
+        padding: 0 7px;
+        border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+        border-radius: var(--radius-pill);
+        color: var(--accent);
+        background: color-mix(in srgb, var(--accent) 9%, transparent);
+        font-size: var(--text-2xs);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .table-property-value {
+        overflow: hidden;
+        color: var(--muted);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .table-actions {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 4px;
+    }
+
+    .table-action {
+        display: inline-flex;
+        width: 27px;
+        height: 27px;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid transparent;
+        border-radius: var(--radius-sm);
+        color: var(--faint);
+        background: transparent;
+        cursor: pointer;
+    }
+
+    .table-action:hover {
+        border-color: var(--border);
+        color: var(--text);
+        background: var(--surface-hover);
+    }
+
+    .table-action svg {
+        width: 13px;
+        height: 13px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.7;
+    }
+
+    .table-attachment-count {
+        display: inline-flex;
+        height: 20px;
+        align-items: center;
+        gap: 4px;
+        padding: 0 7px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-pill);
+        color: var(--muted);
+        background: color-mix(in srgb, var(--text) 4%, transparent);
+        font-size: var(--text-2xs);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .table-attachment-count svg {
+        width: 11px;
+        height: 11px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.7;
+    }
+
     /* ---------- Responsive ---------- */
 
     @media (max-width: 700px) {
+        .table-card-top {
+            min-height: 0;
+            align-items: flex-start;
+            flex-direction: column;
+            gap: 4px;
+            padding: 10px 12px;
+        }
+
+        .table-heading {
+            flex-wrap: wrap;
+        }
+
+        .table-summary {
+            white-space: normal;
+        }
+
+        .table-footer {
+            align-items: flex-start;
+            flex-direction: column;
+            gap: 2px;
+            padding: 8px 12px;
+        }
+
+        .table-footer > span:last-child {
+            display: none;
+        }
+
+        .notes-table-host {
+            height: calc(100vh - 410px);
+            min-height: 280px;
+        }
+
         .activity-rail {
             inset: auto 0 0;
             width: 100%;

@@ -44,6 +44,12 @@ const state = {
     saveTimer: null,
     savePromise: null,
     notesLoaded: false,
+    tableData: [],
+    table: null,
+    tableRequestID: 0,
+    tableKey: '',
+    tableLoaded: false,
+    tableColumnCount: 0,
     wikilinkRequestID: 0,
     wikilinkTimer: null,
     wikilinkHeadingCache: new Map(),
@@ -62,6 +68,12 @@ const elements = {
     graphView: document.querySelector('#graphView'),
     editorView: document.querySelector('#editorView'),
     searchInput: document.querySelector('#searchInput'),
+    resultsSection: document.querySelector('#resultsSection'),
+    tableView: document.querySelector('#tableView'),
+    notesTable: document.querySelector('#notesTable'),
+    tableSummary: document.querySelector('#tableSummary'),
+    tableColumnsInfo: document.querySelector('#tableColumnsInfo'),
+    tableFooterInfo: document.querySelector('#tableFooterInfo'),
     notesList: document.querySelector('#notesList'),
     resultCount: document.querySelector('#resultCount'),
     resultsTitle: document.querySelector('#resultsTitle'),
@@ -335,7 +347,8 @@ function setupEventListeners() {
         window.clearTimeout(state.searchTimer);
         state.offset = 0;
         state.searchTimer = window.setTimeout(() => {
-            loadNotes();
+            if (state.mode === 'table') applyTableFilter();
+            else loadNotes();
             updateListHistory();
         }, 160);
     });
@@ -434,6 +447,7 @@ function setupEventListeners() {
     window.addEventListener('resize', () => {
         editorLinePositionCache = null;
         positionAttachmentsDialog();
+        if (state.table && state.mode === 'table') state.table.setHeight(tableHeight());
         if (state.view === 'editor' && window.matchMedia('(max-width: 700px)').matches &&
             elements.editorWorkspace.dataset.editorMode === 'split') {
             setEditorMode('edit');
@@ -614,9 +628,21 @@ function updateSearchModes() {
         button.classList.toggle('is-active', active);
         button.setAttribute('aria-pressed', String(active));
     });
+    const tableMode = state.mode === 'table';
+    elements.resultsSection.hidden = tableMode;
+    elements.tableView.hidden = !tableMode;
+    elements.searchInput.placeholder = tableMode
+        ? 'Pesquisar em qualquer coluna...'
+        : 'Pesquisar notas...';
+    if (tableMode) elements.pagination.hidden = true;
 }
 
 async function loadNotes() {
+    if (state.mode === 'table') {
+        if (state.view === 'editor') return;
+        await loadTable();
+        return;
+    }
     const requestID = ++state.requestID;
     const query = elements.searchInput.value.trim();
     const params = new URLSearchParams({
@@ -651,6 +677,515 @@ async function loadNotes() {
             showMessage(`Não foi possível carregar as notas: ${error.message}`, 'error');
         }
     }
+}
+
+const tablePropertyPrefix = 'property:';
+const tableIcons = {
+    note: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5"/></svg>',
+    file: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 16h6"/></svg>',
+    image: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="m5 17 5-4 3 2.5 3-3 3 3.5"/></svg>',
+    pdf: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 14h6M9 17h4"/></svg>',
+    folder: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v9a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></svg>',
+    open: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg>',
+    download: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0 4-4m-4 4-4-4M5 19h14"/></svg>',
+    paperclip: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 12.5 7.1-7.1a3 3 0 0 1 4.2 4.2l-9.2 9.2a5 5 0 0 1-7.1-7.1l9.2-9.2"/></svg>'
+};
+
+function tablePropertyField(key) {
+    return `${tablePropertyPrefix}${key}`;
+}
+
+function invalidateTable() {
+    state.tableLoaded = false;
+    state.tableKey = '';
+}
+
+function normalizeTableSearch(value) {
+    return String(value ?? '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLocaleLowerCase();
+}
+
+function flattenTableSearchValues(value, output) {
+    if (value === null || value === undefined || value === '') return;
+    if (Array.isArray(value)) {
+        for (const item of value) flattenTableSearchValues(item, output);
+        return;
+    }
+    if (typeof value === 'object') {
+        for (const item of Object.values(value)) flattenTableSearchValues(item, output);
+        return;
+    }
+    output.push(String(value));
+}
+
+function tableNoteMatches(note, needle) {
+    const values = [note.title, note.folder];
+    flattenTableSearchValues(note.tags, values);
+    for (const value of Object.values(note.properties || {})) flattenTableSearchValues(value, values);
+    return values.some(value => normalizeTableSearch(value).includes(needle));
+}
+
+function tableAttachmentMatches(attachment, needle) {
+    return [attachment.filename, attachment.media_type, formatFileSize(attachment.size)]
+        .some(value => normalizeTableSearch(value).includes(needle));
+}
+
+function tableFilterRow(data, needle) {
+    const values = data.__search || [];
+    if (values.some(value => normalizeTableSearch(value).includes(needle))) return true;
+    if (data.kind === 'note' && Array.isArray(data.children)) {
+        return data.children.some(child => tableFilterRow(child, needle));
+    }
+    return false;
+}
+
+async function loadTable() {
+    const key = `${state.folder}\u0000${state.tag}`;
+    if (state.tableLoaded && state.tableKey === key) {
+        applyTableFilter();
+        return;
+    }
+    const requestID = ++state.tableRequestID;
+    const params = new URLSearchParams();
+    if (state.folder) params.set('folder', state.folder);
+    if (state.tag) params.set('tag', state.tag);
+    try {
+        const payload = await requestJSON(`/api/table${params.size ? `?${params}` : ''}`);
+        if (requestID !== state.tableRequestID) return;
+        state.tableData = Array.isArray(payload.items) ? payload.items : [];
+        state.tableKey = key;
+        state.tableLoaded = true;
+        renderTable();
+    } catch (error) {
+        if (requestID !== state.tableRequestID) return;
+        state.tableData = [];
+        state.tableLoaded = false;
+        renderTable();
+        showMessage(`Não foi possível carregar a tabela: ${error.message}`, 'error');
+    }
+}
+
+function resetTableContainer() {
+    const host = document.querySelector('#notesTableHost');
+    if (!host) return null;
+    const fresh = document.createElement('div');
+    fresh.id = 'notesTable';
+    fresh.className = 'notes-table';
+    host.replaceChildren(fresh);
+    elements.notesTable = fresh;
+    return fresh;
+}
+
+function tableHeight() {
+    const host = document.querySelector('#notesTableHost');
+    const measured = host?.clientHeight || 0;
+    return Math.max(280, Math.floor(measured || window.innerHeight - 360));
+}
+
+function tablePropertyKeys(notes) {
+    const keys = new Set();
+    for (const note of notes) {
+        for (const key of Object.keys(note.properties || {})) keys.add(key);
+    }
+    return [...keys].sort((left, right) => left.localeCompare(right, 'pt-BR'));
+}
+
+function tableAttachmentRow(note, attachment) {
+    const values = [attachment.filename, attachment.media_type, formatFileSize(attachment.size)];
+    return {
+        kind: 'attachment',
+        noteID: note.id,
+        attachmentID: attachment.id,
+        filename: attachment.filename,
+        media_type: attachment.media_type,
+        size: attachment.size,
+        url: attachment.url,
+        title: attachment.filename,
+        folder: '',
+        __search: values
+    };
+}
+
+function renderTable() {
+    if (state.table) {
+        try {
+            state.table.destroy();
+        } catch {
+            // The table may already be gone after a failed render.
+        }
+        state.table = null;
+    }
+    const container = resetTableContainer();
+    if (!container) return;
+    if (!window.Tabulator) {
+        container.textContent = 'Não foi possível carregar o Tabulator.';
+        return;
+    }
+
+    const propertyKeys = tablePropertyKeys(state.tableData);
+    state.tableColumnCount = propertyKeys.length;
+    const rows = state.tableData.map(note => {
+        const attachments = (note.attachments || []).map(attachment => tableAttachmentRow(note, attachment));
+        const row = {
+            kind: 'note',
+            noteID: note.id,
+            title: note.title,
+            folder: note.folder || '',
+            tags: note.tags || [],
+            updated_at: note.updated_at || '',
+            created_at: note.created_at || '',
+            properties: note.properties || {},
+            __search: []
+        };
+        flattenTableSearchValues(note.title, row.__search);
+        flattenTableSearchValues(note.folder, row.__search);
+        flattenTableSearchValues(note.tags, row.__search);
+        for (const value of Object.values(note.properties || {})) flattenTableSearchValues(value, row.__search);
+        for (const attachment of attachments) row.__search.push(...attachment.__search);
+        for (const key of propertyKeys) row[tablePropertyField(key)] = row.properties[key] ?? null;
+        if (attachments.length) row.children = attachments;
+        return row;
+    });
+
+    const columns = [
+        {
+            title: 'Título',
+            field: 'title',
+            minWidth: 240,
+            widthGrow: 3,
+            formatter: tableTitleFormatter,
+            sorter: tableTextSorter
+        },
+        {
+            title: 'Pasta',
+            field: 'folder',
+            minWidth: 130,
+            widthGrow: 1,
+            formatter: tableFolderFormatter,
+            sorter: tableTextSorter
+        },
+        ...propertyKeys.map(key => ({
+            title: key,
+            field: tablePropertyField(key),
+            minWidth: 110,
+            widthGrow: 1,
+            headerTooltip: `Propriedade do frontmatter: ${key}`,
+            formatter: tablePropertyFormatter,
+            sorter: tablePropertySorter
+        })),
+        {
+            title: 'Atualizado',
+            field: 'updated_at',
+            minWidth: 140,
+            widthGrow: 1,
+            formatter: tableDateFormatter,
+            sorter: tableTextSorter
+        },
+        {
+            title: 'Ações',
+            field: 'actions',
+            width: 110,
+            headerSort: false,
+            hozAlign: 'right',
+            formatter: tableActionsFormatter,
+            cssClass: 'table-actions-cell'
+        }
+    ];
+
+    state.table = new window.Tabulator(container, {
+        data: rows,
+        columns,
+        height: tableHeight(),
+        layout: 'fitDataStretch',
+        headerHeight: 38,
+        rowHeight: 48,
+        placeholder: 'Nenhuma nota encontrada.',
+        movableColumns: false,
+        resizableColumns: true,
+        selectableRows: false,
+        dataTree: true,
+        dataTreeChildField: 'children',
+        dataTreeElementColumn: 'title',
+        dataTreeChildIndent: 18,
+        dataTreeStartExpanded: false,
+        dataTreeFilter: true,
+        dataTreeSort: false,
+        initialSort: [{ column: 'updated_at', dir: 'desc' }],
+        rowFormatter: row => {
+            const kind = row.getData().kind;
+            row.getElement().classList.add(kind === 'attachment' ? 'is-attachment-row' : 'is-note-row');
+        }
+    });
+    applyTableFilter();
+}
+
+function applyTableFilter() {
+    if (!state.table) {
+        updateTableSummary();
+        return;
+    }
+    const query = elements.searchInput.value.trim();
+    if (query) {
+        const needle = normalizeTableSearch(query);
+        state.table.setFilter(data => tableFilterRow(data, needle));
+    } else {
+        state.table.clearFilter();
+    }
+    updateTableSummary();
+}
+
+function updateTableSummary() {
+    const query = elements.searchInput.value.trim();
+    const needle = normalizeTableSearch(query);
+    let notes = 0;
+    let attachments = 0;
+    for (const note of state.tableData) {
+        const noteMatches = !needle || tableNoteMatches(note, needle);
+        const matchingAttachments = (note.attachments || [])
+            .filter(attachment => !needle || tableAttachmentMatches(attachment, needle));
+        if (noteMatches || matchingAttachments.length) {
+            notes++;
+            attachments += matchingAttachments.length;
+        }
+    }
+    const noteLabel = `${notes} ${notes === 1 ? 'nota' : 'notas'}`;
+    const attachmentLabel = `${attachments} ${attachments === 1 ? 'anexo' : 'anexos'}`;
+    elements.tableSummary.textContent = `${noteLabel} · ${attachmentLabel}`;
+    elements.resultCount.textContent = `${noteLabel} · ${attachmentLabel}`;
+    elements.tableColumnsInfo.textContent =
+        `${state.tableColumnCount} ${state.tableColumnCount === 1 ? 'coluna dinâmica' : 'colunas dinâmicas'}`;
+    elements.tableFooterInfo.textContent = query
+        ? `${noteLabel} · ${attachmentLabel} para “${query}”`
+        : `${noteLabel} · ${attachmentLabel} · colunas geradas do frontmatter`;
+}
+
+function tableTextSorter(left, right) {
+    return String(left ?? '').localeCompare(String(right ?? ''), 'pt-BR', { sensitivity: 'base' });
+}
+
+function tablePropertySorter(left, right) {
+    return tableDisplayValue(left).localeCompare(tableDisplayValue(right), 'pt-BR', { sensitivity: 'base' });
+}
+
+function tableDisplayValue(value) {
+    if (value === null || value === undefined || value === '') return '';
+    if (Array.isArray(value)) return value.map(tableDisplayValue).join(', ');
+    if (typeof value === 'object') {
+        try {
+            return JSON.stringify(value);
+        } catch {
+            return String(value);
+        }
+    }
+    if (typeof value === 'boolean') return value ? 'Sim' : 'Não';
+    return String(value);
+}
+
+function tableNoteIcon() {
+    const icon = document.createElement('span');
+    icon.className = 'table-cell-icon';
+    icon.innerHTML = tableIcons.note;
+    return icon;
+}
+
+function tableFileIcon(filename) {
+    const extension = String(filename || '').split('.').pop()?.toLocaleLowerCase() || '';
+    const icon = document.createElement('span');
+    icon.className = 'table-cell-icon';
+    if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'svg', 'bmp'].includes(extension)) {
+        icon.classList.add('is-image');
+        icon.innerHTML = tableIcons.image;
+    } else if (extension === 'pdf') {
+        icon.classList.add('is-pdf');
+        icon.innerHTML = tableIcons.pdf;
+    } else {
+        icon.classList.add('is-text');
+        icon.innerHTML = tableIcons.file;
+    }
+    return icon;
+}
+
+function tableTitleFormatter(cell) {
+    const data = cell.getRow().getData();
+    const wrapper = document.createElement('div');
+    wrapper.className = 'table-title-cell';
+
+    if (data.kind === 'attachment') {
+        wrapper.append(tableFileIcon(data.filename));
+        const link = document.createElement('button');
+        link.type = 'button';
+        link.className = 'table-note-link table-file-name';
+        link.textContent = data.filename;
+        link.title = data.filename;
+        link.addEventListener('click', event => {
+            event.stopPropagation();
+            openTableAttachment(data);
+        });
+        const type = document.createElement('span');
+        type.className = 'table-file-type';
+        type.textContent = (data.filename.split('.').pop() || data.media_type.split('/').pop() || 'arquivo').toLocaleUpperCase();
+        const size = document.createElement('span');
+        size.className = 'table-file-size';
+        size.textContent = formatFileSize(data.size);
+        wrapper.append(link, type, size);
+        return wrapper;
+    }
+
+    wrapper.append(tableNoteIcon());
+    const copy = document.createElement('div');
+    copy.className = 'table-title-copy';
+    const link = document.createElement('button');
+    link.type = 'button';
+    link.className = 'table-note-link';
+    link.textContent = data.title;
+    link.title = data.title;
+    link.addEventListener('click', event => {
+        event.stopPropagation();
+        void openNote(data.noteID);
+    });
+    const count = Array.isArray(data.children) ? data.children.length : 0;
+    const subtitle = document.createElement('span');
+    subtitle.className = 'table-note-sub';
+    subtitle.textContent = count === 0
+        ? 'sem anexos'
+        : `${count} ${count === 1 ? 'anexo' : 'anexos'}`;
+    copy.append(link, subtitle);
+    wrapper.append(copy);
+    return wrapper;
+}
+
+function tableFolderFormatter(cell) {
+    const data = cell.getRow().getData();
+    const wrapper = document.createElement('div');
+    wrapper.className = 'table-folder-cell';
+    if (data.kind === 'attachment') {
+        const empty = document.createElement('span');
+        empty.className = 'table-empty-value';
+        empty.textContent = '—';
+        wrapper.append(empty);
+        return wrapper;
+    }
+    wrapper.innerHTML = tableIcons.folder;
+    const label = document.createElement('span');
+    label.textContent = data.folder || 'Raiz';
+    label.title = data.folder || 'Raiz';
+    if (!data.folder) label.className = 'table-empty-value';
+    wrapper.append(label);
+    return wrapper;
+}
+
+function tablePropertyFormatter(cell) {
+    const value = cell.getValue();
+    if (Array.isArray(value)) {
+        const list = document.createElement('div');
+        list.className = 'table-tag-list';
+        if (!value.length) {
+            list.append(tableMutedValue('—'));
+            return list;
+        }
+        for (const item of value) {
+            const tag = document.createElement('span');
+            const label = tableDisplayValue(item);
+            tag.className = 'table-tag';
+            tag.textContent = label;
+            tag.title = label;
+            list.append(tag);
+        }
+        return list;
+    }
+    const text = tableDisplayValue(value);
+    if (!text) return tableMutedValue('—');
+    const span = document.createElement('span');
+    span.className = 'table-property-value';
+    span.textContent = text;
+    span.title = text;
+    return span;
+}
+
+function tableDateFormatter(cell) {
+    const data = cell.getRow().getData();
+    if (data.kind === 'attachment') return tableMutedValue('');
+    const value = cell.getValue();
+    if (!value) return tableMutedValue('—');
+    const normalized = value.includes('T') ? value : value.replace(' ', 'T');
+    const parsed = new Date(normalized.endsWith('Z') ? normalized : `${normalized}Z`);
+    const label = Number.isNaN(parsed.getTime())
+        ? value
+        : parsed.toLocaleString('pt-BR', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    const span = document.createElement('span');
+    span.className = 'table-property-value';
+    span.textContent = label;
+    span.title = value;
+    return span;
+}
+
+function tableMutedValue(text) {
+    const span = document.createElement('span');
+    span.className = 'table-empty-value';
+    span.textContent = text;
+    return span;
+}
+
+function tableActionButton(label, icon, onClick) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'table-action';
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.innerHTML = icon;
+    button.addEventListener('click', onClick);
+    return button;
+}
+
+function tableActionsFormatter(cell) {
+    const data = cell.getRow().getData();
+    const wrapper = document.createElement('div');
+    wrapper.className = 'table-actions';
+    if (data.kind === 'attachment') {
+        wrapper.append(
+            tableActionButton('Abrir anexo', tableIcons.open, event => {
+                event.stopPropagation();
+                openTableAttachment(data);
+            }),
+            tableActionButton('Baixar anexo', tableIcons.download, event => {
+                event.stopPropagation();
+                downloadTableAttachment(data);
+            })
+        );
+        return wrapper;
+    }
+    const count = Array.isArray(data.children) ? data.children.length : 0;
+    if (count) {
+        const badge = document.createElement('span');
+        badge.className = 'table-attachment-count';
+        badge.title = `${count} ${count === 1 ? 'anexo' : 'anexos'}`;
+        badge.innerHTML = tableIcons.paperclip;
+        badge.append(document.createTextNode(String(count)));
+        wrapper.append(badge);
+    }
+    return wrapper;
+}
+
+function openTableAttachment(data) {
+    window.open(`${data.url}?inline=1`, '_blank', 'noopener');
+}
+
+function downloadTableAttachment(data) {
+    const link = document.createElement('a');
+    link.href = data.url;
+    link.download = data.filename;
+    link.rel = 'noopener';
+    document.body.append(link);
+    link.click();
+    link.remove();
 }
 
 async function loadFolders() {
@@ -1585,6 +2120,7 @@ async function persistDraft() {
             }
             state.noteVersion = saved.version ?? state.noteVersion;
             state.graphData = null;
+            invalidateTable();
             if (id === null) {
                 state.noteID = saved.id;
                 updatePreview();
@@ -1889,6 +2425,7 @@ async function deleteCurrentNote() {
         if (state.savePromise) await state.savePromise;
         await requestJSON(`/api/notes/${state.noteID}`, { method: 'DELETE' });
         state.graphData = null;
+        invalidateTable();
         state.savedDraft = getDraft();
         showMessage('Nota excluída.', 'success');
         state.noteID = null;
@@ -1916,6 +2453,7 @@ async function deleteNote(id) {
         }
         await requestJSON(`/api/notes/${id}`, { method: 'DELETE' });
         state.graphData = null;
+        invalidateTable();
         showMessage('Nota excluída.', 'success');
         state.folderNotesGeneration++;
         state.folderNotes.clear();
@@ -3097,6 +3635,7 @@ async function moveNoteToFolder(noteID, folder) {
             body: JSON.stringify({ folder })
         });
         state.graphData = null;
+        invalidateTable();
         if (state.view === 'editor' && state.noteID === noteID) {
             state.noteFolder = folder;
             state.savedDraft = getDraft();
@@ -3119,6 +3658,7 @@ async function moveFolderToParent(source, target) {
             body: JSON.stringify({ source, target })
         });
         state.graphData = null;
+        invalidateTable();
         state.folder = rebaseFolderPath(state.folder, source, result.folder);
         if (state.listState) {
             state.listState.folder = rebaseFolderPath(state.listState.folder || '', source, result.folder);
@@ -3200,6 +3740,7 @@ async function renameFolderFromTree(folder) {
             body: JSON.stringify({ source: folder, name })
         });
         state.graphData = null;
+        invalidateTable();
         state.folder = rebaseFolderPath(state.folder, folder, result.folder);
         state.expandedFolders = new Set(
             [...state.expandedFolders].map(path => rebaseFolderPath(path, folder, result.folder))

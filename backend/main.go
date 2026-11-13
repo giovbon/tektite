@@ -1172,6 +1172,7 @@ func (a *App) Handler(frontendDir string) http.Handler {
 	mux.HandleFunc("/api/folders/move", a.handleFolderMove)
 	mux.HandleFunc("/api/folders/rename", a.handleFolderRename)
 	mux.HandleFunc("/api/folder-notes", a.handleFolderNotes)
+	mux.HandleFunc("/api/table", a.handleTable)
 	mux.HandleFunc("/api/graph", a.handleGraph)
 	mux.HandleFunc("/api/preview", a.handlePreview)
 	mux.Handle("/", revalidateStaticFiles(http.FileServer(http.Dir(frontendDir))))
