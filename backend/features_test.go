@@ -207,6 +207,24 @@ func TestPreviewWikilinksBecomeNoteLinksOutsideCode(t *testing.T) {
 	}
 }
 
+func TestPreviewWikilinkAnchorsBecomeHeadingQueries(t *testing.T) {
+	source := indexedNote{GraphNode: GraphNode{ID: 1, Title: "Source", Folder: "Projects"}}
+	byPath := map[string]int64{"projects/target": 2, "261112 19:42": 4}
+	byTitle := map[string]int64{"target": 2}
+	markdown := "[[Target#Primeira Seção]] [[#Local]] [[Target#Seção|Alias]] [[261112 19:42#Fim]]"
+	rendered := convertWikilinksToMarkdown(markdown, source, byPath, byTitle)
+	for _, expected := range []string{
+		"[Target#Primeira Seção](?note=2&heading=Primeira+Se%C3%A7%C3%A3o)",
+		"[#Local](?note=1&heading=Local)",
+		"[Alias](?note=2&heading=Se%C3%A7%C3%A3o)",
+		"[261112 19:42#Fim](?note=4&heading=Fim)",
+	} {
+		if !strings.Contains(rendered, expected) {
+			t.Fatalf("preview conversion is missing %q: %s", expected, rendered)
+		}
+	}
+}
+
 func TestAuthenticationProtectsAPIAndSupportsLoginLogout(t *testing.T) {
 	t.Setenv("AUTHENTICATION_PASSWORD", "test-password")
 	app, err := NewApp(t.TempDir())

@@ -98,7 +98,17 @@ func convertWikilinkText(value string, source indexedNote, byPath, byTitle map[s
 			continue
 		}
 		target := strings.TrimSpace(value[match[2]:match[3]])
-		noteID := resolveNoteLink(source, target, byPath, byTitle)
+		noteID := int64(0)
+		anchor := ""
+		if strings.HasPrefix(target, "#") {
+			noteID = source.ID
+			anchor = strings.TrimSpace(strings.TrimPrefix(target, "#"))
+		} else {
+			noteID = resolveNoteLink(source, target, byPath, byTitle)
+			if hashIndex := strings.Index(target, "#"); hashIndex >= 0 {
+				anchor = strings.TrimSpace(target[hashIndex+1:])
+			}
+		}
 		if noteID == 0 {
 			continue
 		}
@@ -113,6 +123,10 @@ func convertWikilinkText(value string, source indexedNote, byPath, byTitle map[s
 		result.WriteString(escapeMarkdownLinkLabel(label))
 		result.WriteString("](?note=")
 		result.WriteString(strconv.FormatInt(noteID, 10))
+		if anchor != "" {
+			result.WriteString("&heading=")
+			result.WriteString(url.QueryEscape(anchor))
+		}
 		result.WriteByte(')')
 		cursor = match[1]
 	}
@@ -995,8 +1009,13 @@ func resolveNoteLink(source indexedNote, rawTarget string, byPath, byTitle map[s
 	// Plain titles and relative paths must win before any URL parsing. Note
 	// titles can contain characters like ":" (for example "261112 19:42"),
 	// which url.Parse would reject as a malformed URL and make wikilinks,
-	// graph edges and backlinks silently disappear.
-	if id := resolveNoteLinkPath(source, target, byPath, byTitle); id != 0 {
+	// graph edges and backlinks silently disappear. Strip the heading anchor
+	// first so the path part can still resolve by title.
+	pathTarget := target
+	if hashIndex := strings.Index(pathTarget, "#"); hashIndex >= 0 {
+		pathTarget = pathTarget[:hashIndex]
+	}
+	if id := resolveNoteLinkPath(source, pathTarget, byPath, byTitle); id != 0 {
 		return id
 	}
 	// Only fall back to URL syntax when the target actually uses it.

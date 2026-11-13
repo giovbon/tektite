@@ -37,6 +37,18 @@ function changeLines(value, start, end, transform) {
     };
 }
 
+export function splitWikilinkQuery(query) {
+    const hashIndex = query.indexOf('#');
+    if (hashIndex < 0) {
+        return { noteQuery: query, headingQuery: null, hasHeading: false };
+    }
+    return {
+        noteQuery: query.slice(0, hashIndex),
+        headingQuery: query.slice(hashIndex + 1),
+        hasHeading: true
+    };
+}
+
 export function indentSelection(value, start, end, outdent = false) {
     if (start === end && !outdent) {
         const next = `${value.slice(0, start)}    ${value.slice(end)}`;
@@ -98,7 +110,12 @@ export class MarkdownEditor {
         if (tokenStart < 0 || (tokenStart > 0 && before[tokenStart - 1] === '!')) return null;
         const query = before.slice(tokenStart + 2);
         if (query.length > 100 || /[\[\]\n|]/.test(query)) return null;
-        return { query, tokenStart: tokenStart + 2, caret: selectionStart };
+        return {
+            query,
+            ...splitWikilinkQuery(query),
+            tokenStart: tokenStart + 2,
+            caret: selectionStart
+        };
     }
 
     acceptWikilink(target) {

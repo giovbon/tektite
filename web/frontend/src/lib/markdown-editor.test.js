@@ -64,10 +64,40 @@ test('inserts a Markdown link with Ctrl+K', () => {
 test('detects an unfinished wikilink at the caret', () => {
     const textarea = createTextarea('before [[Tar', 12);
     const editor = new MarkdownEditor(textarea, () => {});
-    assert.deepEqual(editor.getWikilinkToken(), { query: 'Tar', tokenStart: 9, caret: 12 });
+    assert.deepEqual(editor.getWikilinkToken(), {
+        query: 'Tar',
+        noteQuery: 'Tar',
+        headingQuery: null,
+        hasHeading: false,
+        tokenStart: 9,
+        caret: 12
+    });
     textarea.value = '![[image';
     textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
     assert.equal(editor.getWikilinkToken(), null);
+});
+
+test('splits a wikilink token into note and heading parts', () => {
+    const textarea = createTextarea('Veja [[Pasta/Nota#Primeira', 26);
+    const editor = new MarkdownEditor(textarea, () => {});
+    assert.deepEqual(editor.getWikilinkToken(), {
+        query: 'Pasta/Nota#Primeira',
+        noteQuery: 'Pasta/Nota',
+        headingQuery: 'Primeira',
+        hasHeading: true,
+        tokenStart: 7,
+        caret: 26
+    });
+    textarea.value = '[[#Introdução';
+    textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
+    assert.deepEqual(editor.getWikilinkToken(), {
+        query: '#Introdução',
+        noteQuery: '',
+        headingQuery: 'Introdução',
+        hasHeading: true,
+        tokenStart: 2,
+        caret: 13
+    });
 });
 
 test('accepts a wikilink suggestion and preserves existing closing brackets', () => {

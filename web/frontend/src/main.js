@@ -2,7 +2,7 @@ import { requestJSON } from './lib/api-client.js';
 import { CommandPalette } from './lib/command-palette.js';
 import { ensureFrontmatterTags, extractMarkdownOutline, frontmatterLineOffset, highlightMarkdown, MarkdownEditor, parseFrontmatter, stripFrontmatter } from './lib/markdown-editor.js';
 import { GraphView } from './lib/graph-view.js';
-import { findLinkOccurrence, linkTargetMatches } from './lib/note-links.js';
+import { findLinkOccurrence, linkTargetMatches, normalizeLinkPath } from './lib/note-links.js';
 import { highlightCode } from './lib/syntax-highlight.js';
 import { getScrollSpacerHeight, mapEditorToPreview, mapPreviewToEditor } from './lib/scroll-sync.js';
 
@@ -46,10 +46,12 @@ const state = {
     notesLoaded: false,
     wikilinkRequestID: 0,
     wikilinkTimer: null,
+    wikilinkHeadingCache: new Map(),
     wikilinkAutocomplete: {
         open: false,
         items: [],
-        activeIndex: 0
+        activeIndex: 0,
+        mode: 'note'
     }
 };
 let editorSplitPercent = 50;
@@ -404,11 +406,17 @@ function setupEventListeners() {
         }
         const link = event.target.closest('a[href]');
         if (!link) return;
-        const params = new URLSearchParams(link.getAttribute('href').replace(/^\?/, ''));
-        const noteID = params.get('note');
+        let url;
+        try {
+            url = new URL(link.getAttribute('href'), window.location.href);
+        } catch {
+            return;
+        }
+        if (url.origin !== window.location.origin) return;
+        const noteID = url.searchParams.get('note');
         if (!/^\d+$/.test(noteID || '')) return;
         event.preventDefault();
-        void openNote(Number(noteID));
+        void openNote(Number(noteID), { heading: url.searchParams.get('heading') || '' });
     });
     elements.noteContent.addEventListener('scroll', () => {
         handleEditorScroll(elements.noteContent);
@@ -1101,6 +1109,124 @@ async function selectTag(tag) {
     if (elements.panel.dataset.panel === 'search') elements.searchInput.focus();
 }
 
+function isSameWikilinkToken(current, token) {
+    return Boolean(current) && current.query === token.query &&
+        current.tokenStart === token.tokenStart && current.hasHeading === token.hasHeading;
+}
+
+function normalizeAutocompleteText(value) {
+    return String(value ?? '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLocaleLowerCase();
+}
+
+function pickWikilinkNote(items, noteQuery) {
+    const normalized = normalizeLinkPath(noteQuery);
+    if (!normalized) return items[0] || null;
+    return items.find(note => normalizeLinkPath(note.title) === normalized ||
+        normalizeLinkPath(`${note.folder}/${note.title}`) === normalized) ||
+        items.find(note => normalizeLinkPath(note.title).endsWith(`/${normalized}`)) ||
+        items[0] || null;
+}
+
+function buildHeadingOptions(headings, headingQuery, reference) {
+    const needle = normalizeAutocompleteText(headingQuery).trim();
+    return headings
+        .filter(heading => !needle || normalizeAutocompleteText(heading.text).includes(needle))
+        .map(heading => ({
+            label: heading.text,
+            secondary: `H${heading.level}`,
+            insert: `${reference}#${heading.text}`,
+            kind: 'heading',
+            prefix: Boolean(needle) && normalizeAutocompleteText(heading.text).trim().startsWith(needle)
+        }))
+        .sort((a, b) => Number(b.prefix) - Number(a.prefix))
+        .slice(0, 8);
+}
+
+async function showWikilinkNoteSuggestions(token, requestID) {
+    const query = token.query.trim();
+    const params = new URLSearchParams({ limit: '100', offset: '0' });
+    let url = `/api/notes?${params}`;
+    if (query) {
+        params.set('q', query);
+        params.set('mode', 'title');
+        url = `/api/search?${params}`;
+    }
+    const page = await requestJSON(url);
+    const currentToken = markdownEditor.getWikilinkToken();
+    if (requestID !== state.wikilinkRequestID || !isSameWikilinkToken(currentToken, token)) return;
+
+    const counts = new Map();
+    for (const note of page.items) {
+        const key = note.title.trim().toLocaleLowerCase();
+        counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    const normalizedQuery = normalizeAutocompleteText(query);
+    state.wikilinkAutocomplete.mode = 'note';
+    state.wikilinkAutocomplete.items = page.items
+        .map(note => ({
+            label: note.title,
+            secondary: note.folder,
+            insert: counts.get(note.title.trim().toLocaleLowerCase()) > 1 && note.folder
+                ? `${note.folder}/${note.title}`
+                : note.title,
+            kind: 'note',
+            prefix: normalizeAutocompleteText(note.title).startsWith(normalizedQuery),
+            updated: note.updated_at || ''
+        }))
+        .sort((a, b) => Number(b.prefix) - Number(a.prefix) ||
+            b.updated.localeCompare(a.updated) || a.label.localeCompare(b.label))
+        .slice(0, 8);
+    state.wikilinkAutocomplete.activeIndex = 0;
+    state.wikilinkAutocomplete.open = state.wikilinkAutocomplete.items.length > 0;
+    renderWikilinkAutocomplete();
+}
+
+async function showWikilinkHeadingSuggestions(token, requestID) {
+    const noteQuery = token.noteQuery.trim();
+    let reference = '';
+    let headings = [];
+    if (!noteQuery) {
+        headings = extractMarkdownOutline(elements.noteContent.value);
+    } else {
+        const cacheKey = normalizeAutocompleteText(noteQuery);
+        const cached = state.wikilinkHeadingCache.get(cacheKey);
+        if (cached) {
+            reference = cached.reference;
+            headings = cached.headings;
+        } else {
+            const searchQuery = noteQuery.replace(/\.md$/i, '').split('/').filter(Boolean).pop() || noteQuery;
+            const params = new URLSearchParams({ limit: '100', offset: '0', q: searchQuery, mode: 'title' });
+            const page = await requestJSON(`/api/search?${params}`);
+            let currentToken = markdownEditor.getWikilinkToken();
+            if (requestID !== state.wikilinkRequestID || !isSameWikilinkToken(currentToken, token)) return;
+
+            const note = pickWikilinkNote(page.items, noteQuery);
+            if (note) {
+                const noteData = await requestJSON(`/api/notes/${note.id}`);
+                currentToken = markdownEditor.getWikilinkToken();
+                if (requestID !== state.wikilinkRequestID || !isSameWikilinkToken(currentToken, token)) return;
+                headings = extractMarkdownOutline(noteData.content);
+                reference = noteQuery.includes('/') && note.folder
+                    ? `${note.folder}/${note.title}`
+                    : note.title;
+                state.wikilinkHeadingCache.set(cacheKey, { reference, headings });
+            }
+        }
+    }
+
+    const currentToken = markdownEditor.getWikilinkToken();
+    if (requestID !== state.wikilinkRequestID || !isSameWikilinkToken(currentToken, token)) return;
+
+    state.wikilinkAutocomplete.mode = 'heading';
+    state.wikilinkAutocomplete.items = buildHeadingOptions(headings, token.headingQuery, reference);
+    state.wikilinkAutocomplete.activeIndex = 0;
+    state.wikilinkAutocomplete.open = state.wikilinkAutocomplete.items.length > 0;
+    renderWikilinkAutocomplete();
+}
+
 function scheduleWikilinkSuggestions() {
     const token = markdownEditor.getWikilinkToken();
     if (state.view !== 'editor' || !token) {
@@ -1115,45 +1241,12 @@ function scheduleWikilinkSuggestions() {
     const requestID = ++state.wikilinkRequestID;
     state.wikilinkTimer = window.setTimeout(async () => {
         try {
-            const query = token.query.trim();
-            const params = new URLSearchParams({ limit: '100', offset: '0' });
-            let url = `/api/notes?${params}`;
-            if (query) {
-                params.set('q', query);
-                params.set('mode', 'title');
-                url = `/api/search?${params}`;
-            }
-            const page = await requestJSON(url);
-            const currentToken = markdownEditor.getWikilinkToken();
-            if (requestID !== state.wikilinkRequestID || !currentToken ||
-                currentToken.query !== token.query || currentToken.tokenStart !== token.tokenStart) return;
-
-            const counts = new Map();
-            for (const note of page.items) {
-                const key = note.title.trim().toLocaleLowerCase();
-                counts.set(key, (counts.get(key) || 0) + 1);
-            }
-            const normalizedQuery = query.toLocaleLowerCase();
-            state.wikilinkAutocomplete.items = page.items
-                .map(note => ({
-                    label: note.title,
-                    secondary: note.folder,
-                    insert: counts.get(note.title.trim().toLocaleLowerCase()) > 1 && note.folder
-                        ? `${note.folder}/${note.title}`
-                        : note.title,
-                    prefix: note.title.toLocaleLowerCase().startsWith(normalizedQuery),
-                    updated: note.updated_at || ''
-                }))
-                .sort((a, b) => Number(b.prefix) - Number(a.prefix) ||
-                    b.updated.localeCompare(a.updated) || a.label.localeCompare(b.label))
-                .slice(0, 8);
-            state.wikilinkAutocomplete.activeIndex = 0;
-            state.wikilinkAutocomplete.open = state.wikilinkAutocomplete.items.length > 0;
-            renderWikilinkAutocomplete();
+            if (token.hasHeading) await showWikilinkHeadingSuggestions(token, requestID);
+            else await showWikilinkNoteSuggestions(token, requestID);
         } catch (error) {
             if (requestID === state.wikilinkRequestID) {
                 closeWikilinkAutocomplete();
-                showMessage(`Não foi possível buscar notas para o link: ${error.message}`, 'error');
+                showMessage(`Não foi possível buscar sugestões para o link: ${error.message}`, 'error');
             }
         }
     }, 100);
@@ -1161,6 +1254,8 @@ function scheduleWikilinkSuggestions() {
 
 function renderWikilinkAutocomplete() {
     const popup = elements.wikilinkAutocomplete;
+    const headingMode = state.wikilinkAutocomplete.mode === 'heading';
+    popup.setAttribute('aria-label', headingMode ? 'Cabeçalhos para link' : 'Notas para link');
     popup.replaceChildren();
     state.wikilinkAutocomplete.items.forEach((item, index) => {
         const option = document.createElement('button');
@@ -1171,13 +1266,19 @@ function renderWikilinkAutocomplete() {
         option.setAttribute('role', 'option');
         option.setAttribute('aria-selected', String(index === state.wikilinkAutocomplete.activeIndex));
         if (index === state.wikilinkAutocomplete.activeIndex) option.classList.add('is-active');
+        if (headingMode) {
+            const marker = document.createElement('span');
+            marker.className = 'wikilink-option-marker';
+            marker.textContent = '#';
+            option.append(marker);
+        }
         const label = document.createElement('span');
         label.className = 'wikilink-option-label';
         label.textContent = item.label;
         option.append(label);
         if (item.secondary) {
             const folder = document.createElement('span');
-            folder.className = 'wikilink-option-folder';
+            folder.className = headingMode ? 'wikilink-option-level' : 'wikilink-option-folder';
             folder.textContent = item.secondary;
             option.append(folder);
         }
@@ -1304,7 +1405,7 @@ function createAutomaticNoteTitle(date = new Date()) {
     return `${day} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-async function openNote(id, { push = true, backlinkTarget = null } = {}) {
+async function openNote(id, { push = true, backlinkTarget = null, heading = '' } = {}) {
     if (state.view === 'editor' && !(await flushSave())) return;
     const navigationID = ++state.navigationID;
     let listState = state.view === 'editor' ? state.listState : captureListState();
@@ -1319,6 +1420,7 @@ async function openNote(id, { push = true, backlinkTarget = null } = {}) {
         showEditor(note);
         state.pendingBacklink = backlinkTarget;
         if (backlinkTarget) updatePreview();
+        if (heading) scrollToLinkedHeading(heading);
     } catch (error) {
         showMessage(`Não foi possível abrir a nota: ${error.message}`, 'error');
     }
@@ -1327,6 +1429,7 @@ async function openNote(id, { push = true, backlinkTarget = null } = {}) {
 function showEditor(note) {
     window.clearTimeout(state.saveTimer);
     closeWikilinkAutocomplete();
+    state.wikilinkHeadingCache.clear();
     elements.attachmentsDialog.close();
     if (window.matchMedia('(max-width: 700px)').matches) closePanel();
     document.body.classList.remove('is-graph-view');
@@ -2594,6 +2697,27 @@ function runPendingBacklink() {
             .find(link => linkTargetMatches(link.getAttribute('href'), target, state.noteFolder));
         if (anchor) scrollPreviewToElement(anchor, { offset: 40, flash: true });
     });
+}
+
+function normalizeHeadingReference(value) {
+    return String(value ?? '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLocaleLowerCase()
+        .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+        .replace(/[*_`~]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function scrollToLinkedHeading(reference) {
+    const wanted = normalizeHeadingReference(reference);
+    if (!wanted) return;
+    const headings = state.outline;
+    const heading = headings.find(item => normalizeHeadingReference(item.text) === wanted) ||
+        headings.find(item => normalizeHeadingReference(item.text).startsWith(wanted)) ||
+        headings.find(item => normalizeHeadingReference(item.text).includes(wanted));
+    if (heading) scrollToOutlineHeading(heading.line);
 }
 
 function scrollToOutlineHeading(line) {
