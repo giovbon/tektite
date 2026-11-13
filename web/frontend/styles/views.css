@@ -1213,30 +1213,39 @@
         background: transparent;
     }
 
-    .notes-table .tabulator {
+    .notes-table.tabulator {
         border: 0 !important;
         color: var(--text) !important;
-        background: transparent !important;
+        background: var(--surface) !important;
         font-family: var(--font-sans) !important;
         font-size: var(--text-sm) !important;
     }
 
-    .notes-table .tabulator .tabulator-header {
+    .notes-table.tabulator .tabulator-tableholder,
+    .notes-table.tabulator .tabulator-table {
+        background: var(--surface) !important;
+    }
+
+    .notes-table.tabulator .tabulator-header {
         border-bottom: 1px solid var(--border) !important;
         color: var(--faint) !important;
         background: color-mix(in srgb, var(--surface-raised) 40%, transparent) !important;
     }
 
-    .notes-table .tabulator .tabulator-header .tabulator-col {
+    .notes-table.tabulator .tabulator-header .tabulator-col {
         border-right: 0 !important;
         background: transparent !important;
     }
 
-    .notes-table .tabulator .tabulator-col-content {
+    .notes-table.tabulator .tabulator-col-content {
         padding: 0 12px !important;
     }
 
-    .notes-table .tabulator .tabulator-col-title {
+    .notes-table.tabulator .tabulator-col-content {
+        text-align: center !important;
+    }
+
+    .notes-table.tabulator .tabulator-col-title {
         color: var(--faint) !important;
         font-size: var(--text-2xs) !important;
         font-weight: 600 !important;
@@ -1244,78 +1253,104 @@
         text-transform: uppercase !important;
     }
 
-    .notes-table .tabulator .tabulator-col .tabulator-arrow {
+    .notes-table.tabulator .tabulator-col .tabulator-arrow {
         border-bottom-color: var(--faint) !important;
     }
 
-    .notes-table .tabulator .tabulator-col.tabulator-sortable:hover {
+    .notes-table.tabulator .tabulator-col.tabulator-sortable:hover {
         background: color-mix(in srgb, var(--surface-hover) 65%, transparent) !important;
     }
 
-    .notes-table .tabulator .tabulator-tableholder {
+    .notes-table.tabulator .tabulator-tableholder {
         scrollbar-color: var(--scrollbar-thumb) transparent !important;
         scrollbar-width: thin !important;
     }
 
-    .notes-table .tabulator .tabulator-tableholder .tabulator-table {
+    .notes-table.tabulator .tabulator-tableholder .tabulator-table {
         background: transparent !important;
         color: var(--text) !important;
     }
 
-    .notes-table .tabulator .tabulator-row {
-        border-bottom: 1px solid color-mix(in srgb, var(--border) 68%, transparent) !important;
+    .notes-table.tabulator .tabulator-row {
+        border-bottom: 1px solid color-mix(in srgb, var(--border) 42%, transparent) !important;
         color: var(--muted) !important;
         background: transparent !important;
     }
 
-    .notes-table .tabulator .tabulator-row.tabulator-row-even {
-        background: color-mix(in srgb, var(--surface-raised) 18%, transparent) !important;
+    .notes-table.tabulator .tabulator-row.tabulator-row-even {
+        background: color-mix(in srgb, var(--surface-raised) 10%, var(--surface)) !important;
     }
 
-    .notes-table .tabulator .tabulator-row:hover {
+    .notes-table.tabulator .tabulator-row:hover {
         background: color-mix(in srgb, var(--surface-hover) 72%, transparent) !important;
     }
 
-    .notes-table .tabulator .tabulator-row .tabulator-cell {
+    .notes-table.tabulator .tabulator-row .tabulator-cell {
         border-right: 0 !important;
         padding: 0 12px !important;
         background: transparent !important;
+        text-align: center !important;
     }
 
-    .notes-table .tabulator .tabulator-row.tabulator-tree-level-1,
-    .notes-table .tabulator .tabulator-row.is-attachment-row {
+    .notes-table.tabulator .tabulator-row .tabulator-cell[tabulator-field="title"] {
+        position: relative;
+    }
+
+    .notes-table.tabulator .tabulator-row .tabulator-cell[tabulator-field="title"] .tabulator-data-tree-control {
+        position: absolute;
+        z-index: 2;
+        top: 50%;
+        left: 12px;
+        margin: 0 !important;
+        transform: translateY(-50%);
+    }
+
+    .notes-table.tabulator .tabulator-row .tabulator-cell[tabulator-field="title"] .tabulator-data-tree-branch {
+        position: absolute;
+        top: 50%;
+        left: 30px;
+        margin: 0 !important;
+        transform: translateY(-50%);
+    }
+
+    .notes-table.tabulator .tabulator-row .tabulator-cell[tabulator-field="title"] .tabulator-data-tree-branch-empty {
+        display: none;
+    }
+
+    .notes-table.tabulator .tabulator-row.tabulator-tree-level-1,
+    .notes-table.tabulator .tabulator-row.is-attachment-row {
         background: color-mix(in srgb, var(--bg) 62%, transparent) !important;
     }
 
-    .notes-table .tabulator .tabulator-row.tabulator-tree-level-1:hover,
-    .notes-table .tabulator .tabulator-row.is-attachment-row:hover {
+    .notes-table.tabulator .tabulator-row.tabulator-tree-level-1:hover,
+    .notes-table.tabulator .tabulator-row.is-attachment-row:hover {
         background: color-mix(in srgb, var(--surface-hover) 55%, transparent) !important;
     }
 
-    .notes-table .tabulator .tabulator-data-tree-control {
-        width: 18px;
-        height: 18px;
-        border: 1px solid var(--border) !important;
-        border-radius: var(--radius-xs) !important;
-        background: var(--surface-raised) !important;
+    .notes-table.tabulator .tabulator-data-tree-control {
+        width: 16px;
+        height: 16px;
+        margin-right: 4px !important;
+        border: 0 !important;
+        border-radius: 50% !important;
+        background: transparent !important;
     }
 
-    .notes-table .tabulator .tabulator-data-tree-control:hover {
-        border-color: var(--accent) !important;
+    .notes-table.tabulator .tabulator-data-tree-control:hover {
         background: var(--accent-soft) !important;
     }
 
-    .notes-table .tabulator .tabulator-data-tree-control .tabulator-data-tree-control-collapse,
-    .notes-table .tabulator .tabulator-data-tree-control .tabulator-data-tree-control-expand {
+    .notes-table.tabulator .tabulator-data-tree-control .tabulator-data-tree-control-collapse,
+    .notes-table.tabulator .tabulator-data-tree-control .tabulator-data-tree-control-expand {
         border-color: var(--muted) !important;
     }
 
-    .notes-table .tabulator .tabulator-placeholder {
+    .notes-table.tabulator .tabulator-placeholder {
         color: var(--muted) !important;
         background: transparent !important;
     }
 
-    .notes-table .tabulator .tabulator-placeholder-contents {
+    .notes-table.tabulator .tabulator-placeholder-contents {
         padding: 28px;
         font-size: var(--text-sm);
         text-align: center;
@@ -1325,26 +1360,27 @@
     .table-title-cell {
         display: flex;
         min-width: 0;
+        width: 100%;
+        height: 100%;
         align-items: center;
-        gap: 9px;
+        justify-content: center;
+        gap: 7px;
     }
 
     .table-cell-icon {
         display: inline-flex;
-        width: 26px;
-        height: 26px;
+        width: 16px;
+        height: 16px;
         flex: none;
         align-items: center;
         justify-content: center;
-        border: 1px solid var(--border);
-        border-radius: var(--radius-sm);
         color: var(--accent);
-        background: color-mix(in srgb, var(--accent) 8%, transparent);
+        background: transparent;
     }
 
     .table-cell-icon svg {
-        width: 13px;
-        height: 13px;
+        width: 15px;
+        height: 15px;
         fill: none;
         stroke: currentColor;
         stroke-width: 1.6;
@@ -1352,12 +1388,12 @@
 
     .table-cell-icon.is-pdf {
         color: var(--danger);
-        background: color-mix(in srgb, var(--danger) 8%, transparent);
+        background: transparent;
     }
 
     .table-cell-icon.is-image {
         color: var(--graph-wikilink);
-        background: color-mix(in srgb, var(--graph-wikilink) 8%, transparent);
+        background: transparent;
     }
 
     .table-cell-icon.is-text {
@@ -1368,6 +1404,7 @@
         display: flex;
         min-width: 0;
         flex-direction: column;
+        align-items: center;
         gap: 1px;
     }
 
@@ -1428,6 +1465,7 @@
         display: flex;
         min-width: 0;
         align-items: center;
+        justify-content: center;
         gap: 6px;
     }
 

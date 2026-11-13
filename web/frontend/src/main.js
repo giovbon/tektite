@@ -883,15 +883,6 @@ function renderTable() {
             formatter: tableDateFormatter,
             sorter: tableTextSorter
         },
-        {
-            title: 'Ações',
-            field: 'actions',
-            width: 110,
-            headerSort: false,
-            hozAlign: 'right',
-            formatter: tableActionsFormatter,
-            cssClass: 'table-actions-cell'
-        }
     ];
 
     state.table = new window.Tabulator(container, {
@@ -899,8 +890,8 @@ function renderTable() {
         columns,
         height: tableHeight(),
         layout: 'fitDataStretch',
-        headerHeight: 38,
-        rowHeight: 48,
+        headerHeight: 36,
+        rowHeight: 40,
         placeholder: 'Nenhuma nota encontrada.',
         movableColumns: false,
         resizableColumns: true,

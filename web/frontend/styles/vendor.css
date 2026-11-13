@@ -1,3 +1,28 @@
 /* Third-party styles are imported into their own cascade layer so the app
    stylesheet can override Tabulator's defaults without !important rules. */
 @import url("/vendor/tabulator/tabulator_simple.min.css") layer(vendor);
+
+/* The Tabulator theme marks row backgrounds important, so its defaults must
+   be overridden in the same layer to keep the app's theme colors in control. */
+@layer vendor {
+    .notes-table.tabulator .tabulator-row,
+    .notes-table.tabulator .tabulator-tableholder,
+    .notes-table.tabulator .tabulator-table {
+        background-color: var(--surface) !important;
+    }
+
+    .notes-table.tabulator .tabulator-row .tabulator-cell {
+        background-color: transparent !important;
+    }
+
+    .notes-table.tabulator .tabulator-row.tabulator-row-even {
+        background-color: color-mix(in srgb, var(--surface-raised) 10%, var(--surface)) !important;
+    }
+
+    .notes-table.tabulator .tabulator-data-tree-control {
+        border: 0 !important;
+        border-radius: 50% !important;
+        background: transparent !important;
+        box-shadow: none !important;
+    }
+}
