@@ -1151,29 +1151,6 @@
         letter-spacing: -0.01em;
     }
 
-    .table-badge {
-        display: inline-flex;
-        height: 21px;
-        align-items: center;
-        gap: 5px;
-        padding: 0 7px;
-        border: 1px solid color-mix(in srgb, var(--graph-wikilink) 38%, transparent);
-        border-radius: var(--radius-xs);
-        color: var(--graph-wikilink);
-        background: color-mix(in srgb, var(--graph-wikilink) 12%, transparent);
-        font-size: var(--text-2xs);
-        font-weight: 600;
-        letter-spacing: .02em;
-    }
-
-    .table-badge svg {
-        width: 11px;
-        height: 11px;
-        fill: none;
-        stroke: currentColor;
-        stroke-width: 1.8;
-    }
-
     .table-meta,
     .table-summary {
         color: var(--muted);
@@ -1242,7 +1219,7 @@
     }
 
     .notes-table.tabulator .tabulator-col-content {
-        text-align: center !important;
+        text-align: left !important;
     }
 
     .notes-table.tabulator .tabulator-col-title {
@@ -1289,11 +1266,15 @@
         border-right: 0 !important;
         padding: 0 12px !important;
         background: transparent !important;
-        text-align: center !important;
+        text-align: left !important;
     }
 
     .notes-table.tabulator .tabulator-row .tabulator-cell[tabulator-field="title"] {
         position: relative;
+    }
+
+    .notes-table.tabulator .tabulator-header .tabulator-col[tabulator-field="title"] .tabulator-col-content {
+        padding-left: 34px !important;
     }
 
     .notes-table.tabulator .tabulator-row .tabulator-cell[tabulator-field="title"] .tabulator-data-tree-control {
@@ -1333,16 +1314,17 @@
         margin-right: 4px !important;
         border: 0 !important;
         border-radius: 50% !important;
-        background: transparent !important;
+        background: var(--accent-solid) !important;
     }
 
     .notes-table.tabulator .tabulator-data-tree-control:hover {
-        background: var(--accent-soft) !important;
+        background: var(--accent-solid-hover) !important;
     }
 
-    .notes-table.tabulator .tabulator-data-tree-control .tabulator-data-tree-control-collapse,
-    .notes-table.tabulator .tabulator-data-tree-control .tabulator-data-tree-control-expand {
-        border-color: var(--muted) !important;
+    .notes-table.tabulator .tabulator-data-tree-control .tabulator-data-tree-control-expand,
+    .notes-table.tabulator .tabulator-data-tree-control .tabulator-data-tree-control-expand::after,
+    .notes-table.tabulator .tabulator-data-tree-control .tabulator-data-tree-control-collapse::after {
+        background: var(--accent-contrast) !important;
     }
 
     .notes-table.tabulator .tabulator-placeholder {
@@ -1363,8 +1345,13 @@
         width: 100%;
         height: 100%;
         align-items: center;
-        justify-content: center;
+        justify-content: flex-start;
+        padding-left: 22px;
         gap: 7px;
+    }
+
+    .notes-table.tabulator .tabulator-row.is-attachment-row .table-title-cell {
+        padding-left: 30px;
     }
 
     .table-cell-icon {
@@ -1404,7 +1391,7 @@
         display: flex;
         min-width: 0;
         flex-direction: column;
-        align-items: center;
+        align-items: flex-start;
         gap: 1px;
     }
 
@@ -1464,8 +1451,9 @@
     .table-folder-cell {
         display: flex;
         min-width: 0;
+        height: 100%;
         align-items: center;
-        justify-content: center;
+        justify-content: flex-start;
         gap: 6px;
     }
 
@@ -1485,13 +1473,18 @@
     }
 
     .table-empty-value {
+        display: inline-flex;
+        height: 100%;
+        align-items: center;
         color: var(--faint);
     }
 
     .table-tag-list {
         display: flex;
         min-width: 0;
+        height: 100%;
         flex-wrap: wrap;
+        align-content: center;
         gap: 4px;
     }
 
@@ -1512,6 +1505,9 @@
     }
 
     .table-property-value {
+        display: inline-flex;
+        height: 100%;
+        align-items: center;
         overflow: hidden;
         color: var(--muted);
         text-overflow: ellipsis;
@@ -1577,12 +1573,47 @@
     /* ---------- Responsive ---------- */
 
     @media (max-width: 700px) {
+        .main-content:has(#tableView:not([hidden])) {
+            display: flex;
+            height: calc(100dvh - 60px);
+            min-height: 0;
+            flex-direction: column;
+            padding-bottom: 0;
+        }
+
+        #searchView:has(#tableView:not([hidden])) {
+            display: flex;
+            min-height: 0;
+            flex: 1;
+            flex-direction: column;
+        }
+
+        .table-view {
+            display: flex;
+            width: calc(100% + 32px);
+            min-height: 0;
+            flex: 1;
+            margin: 0 -16px;
+        }
+
+        .table-card {
+            display: flex;
+            min-height: 0;
+            flex: 1;
+            flex-direction: column;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            box-shadow: none;
+        }
+
         .table-card-top {
             min-height: 0;
             align-items: flex-start;
             flex-direction: column;
             gap: 4px;
             padding: 10px 12px;
+            background: transparent;
         }
 
         .table-heading {
@@ -1598,6 +1629,7 @@
             flex-direction: column;
             gap: 2px;
             padding: 8px 12px;
+            background: transparent;
         }
 
         .table-footer > span:last-child {
@@ -1605,8 +1637,9 @@
         }
 
         .notes-table-host {
-            height: calc(100vh - 410px);
-            min-height: 280px;
+            height: auto;
+            min-height: 0;
+            flex: 1;
         }
 
         .activity-rail {
