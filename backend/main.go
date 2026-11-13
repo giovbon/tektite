@@ -882,6 +882,61 @@ func (a *App) RenameFolder(source, name string) (string, int64, error) {
 	return a.moveFolder(source, destination)
 }
 
+func (a *App) DeleteFolder(folder string) (int64, error) {
+	normalized, err := normalizeFolder(folder)
+	if err != nil || normalized != folder || folder == "" {
+		return 0, errors.New("folder must be a non-empty normalized relative path")
+	}
+
+	tx, err := a.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	var noteCount, folderCount int64
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM notes
+		WHERE folder = ? OR substr(folder, 1, length(?) + 1) = ? || '/'`,
+		folder, folder, folder).Scan(&noteCount); err != nil {
+		return 0, err
+	}
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM folders
+		WHERE path = ? OR substr(path, 1, length(?) + 1) = ? || '/'`,
+		folder, folder, folder).Scan(&folderCount); err != nil {
+		return 0, err
+	}
+	if noteCount == 0 && folderCount == 0 {
+		return 0, sql.ErrNoRows
+	}
+
+	before, err := readNotesForLinksWith(tx)
+	if err != nil {
+		return 0, err
+	}
+	if _, err := tx.Exec(`UPDATE notes SET folder = '', version = version + 1,
+		updated_at = datetime('now')
+		WHERE folder = ? OR substr(folder, 1, length(?) + 1) = ? || '/'`,
+		folder, folder, folder); err != nil {
+		return 0, err
+	}
+	if _, err := tx.Exec(`DELETE FROM folders
+		WHERE path = ? OR substr(path, 1, length(?) + 1) = ? || '/'`,
+		folder, folder, folder); err != nil {
+		return 0, err
+	}
+	after, err := readNotesForLinksWith(tx)
+	if err != nil {
+		return 0, err
+	}
+	if err := relinkNotesAfterMove(tx, before, after, 0); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return noteCount, nil
+}
+
 func (a *App) moveFolder(source, destination string) (string, int64, error) {
 	if len(destination) > 1024 {
 		return "", 0, errors.New("destination folder path exceeds the 1024 character limit")
@@ -1171,6 +1226,7 @@ func (a *App) Handler(frontendDir string) http.Handler {
 	mux.HandleFunc("/api/folders", a.handleFolders)
 	mux.HandleFunc("/api/folders/move", a.handleFolderMove)
 	mux.HandleFunc("/api/folders/rename", a.handleFolderRename)
+	mux.HandleFunc("/api/folders/delete", a.handleFolderDelete)
 	mux.HandleFunc("/api/folder-notes", a.handleFolderNotes)
 	mux.HandleFunc("/api/table", a.handleTable)
 	mux.HandleFunc("/api/graph", a.handleGraph)
@@ -1568,6 +1624,30 @@ func (a *App) handleFolderRename(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"folder": destination, "moved": count})
 }
 
+func (a *App) handleFolderDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w)
+		return
+	}
+	var request struct {
+		Path string `json:"path"`
+	}
+	if err := decodeJSON(w, r, &request); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	count, err := a.DeleteFolder(request.Path)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"moved": count})
+}
+
 func (a *App) handleNoteFolderMove(w http.ResponseWriter, r *http.Request, id int64) {
 	if r.Method != http.MethodPatch {
 		methodNotAllowed(w)
@@ -1806,7 +1886,7 @@ func main() {
 			log.Printf("HTTP shutdown: %v", err)
 		}
 	}()
-	log.Printf("PKM Notes listening on http://localhost:%d", portNumber)
+	log.Printf("ton618 listening on http://localhost:%d", portNumber)
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("serve application: %v", err)
 	}

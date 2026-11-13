@@ -3404,7 +3404,14 @@ function buildFolderNode(folder) {
     createSubfolder.setAttribute('aria-label', `Criar subpasta em ${folder.path}`);
     createSubfolder.title = `Criar subpasta em ${folder.path}`;
     createSubfolder.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v9a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><path d="M16 11v6m-3-3h6"/></svg>';
-    actions.append(rename, createNote, createSubfolder);
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'icon-button tree-folder-action tree-folder-delete';
+    remove.dataset.deleteFolder = folder.path;
+    remove.setAttribute('aria-label', `Excluir pasta ${folder.name}`);
+    remove.title = 'Excluir pasta';
+    remove.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M6 7l1 14h10l1-14M9 7V4h6v3"/></svg>';
+    actions.append(rename, createNote, createSubfolder, remove);
     row.append(actions);
     item.append(row);
     if (state.expandedFolders.has(folder.path)) {
@@ -3515,6 +3522,13 @@ function handlePanelClick(event) {
         event.preventDefault();
         event.stopPropagation();
         void renameFolderFromTree(renameFolder.dataset.renameFolder);
+        return;
+    }
+    const deleteFolder = event.target.closest('[data-delete-folder]');
+    if (deleteFolder) {
+        event.preventDefault();
+        event.stopPropagation();
+        void deleteFolderFromTree(deleteFolder.dataset.deleteFolder);
         return;
     }
     const outlineItem = event.target.closest('[data-outline-line]');
@@ -3752,6 +3766,44 @@ async function renameFolderFromTree(folder) {
         showMessage('Pasta renomeada.', 'success');
     } catch (error) {
         showMessage(`Não foi possível renomear a pasta: ${error.message}`, 'error');
+    }
+}
+
+async function deleteFolderFromTree(folder) {
+    const folderName = folder.split('/').pop();
+    if (!window.confirm(
+        `Excluir a pasta “${folderName}” e suas subpastas? As notas serão movidas para a raiz.`
+    )) return;
+    if (state.view === 'editor' && !(await flushSave())) return;
+    try {
+        await requestJSON('/api/folders/delete', {
+            method: 'POST',
+            body: JSON.stringify({ path: folder })
+        });
+        state.graphData = null;
+        invalidateTable();
+        if (state.folder === folder || state.folder.startsWith(`${folder}/`)) state.folder = '';
+        if (state.listState &&
+            (state.listState.folder === folder || state.listState.folder.startsWith(`${folder}/`))) {
+            state.listState.folder = '';
+        }
+        state.expandedFolders = new Set(
+            [...state.expandedFolders].filter(path => path !== folder && !path.startsWith(`${folder}/`))
+        );
+        updateListHistory();
+        if (state.view === 'editor' && state.listState) {
+            const current = history.state || {};
+            history.replaceState({ ...current, list: state.listState }, '', location.href);
+        }
+        if (state.view === 'editor' &&
+            (state.noteFolder === folder || state.noteFolder.startsWith(`${folder}/`))) {
+            await refreshOpenNoteAfterMove();
+        }
+        await refreshFolderTree();
+        await loadNotes();
+        showMessage('Pasta excluída; as notas foram movidas para a raiz.', 'success');
+    } catch (error) {
+        showMessage(`Não foi possível excluir a pasta: ${error.message}`, 'error');
     }
 }
 

@@ -178,6 +178,69 @@ func TestFolderRenameAndAttachmentListHandlers(t *testing.T) {
 	}
 }
 
+func TestDeleteFolderMovesNotesToRoot(t *testing.T) {
+	app := newTestApp(t)
+	handler := app.Handler(filepath.Join("..", "web", "frontend"))
+
+	insideID, err := app.CreateNote(Note{Title: "Dentro", Folder: "Projetos"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	nestedID, err := app.CreateNote(Note{Title: "Aninhada", Folder: "Projetos/Ideias"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	outsideID, err := app.CreateNote(Note{Title: "Fora", Folder: "Projetos antigos"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := app.CreateFolder("Projetos/Vazia"); err != nil {
+		t.Fatal(err)
+	}
+
+	response := performJSONRequest(t, handler, http.MethodPost, "/api/folders/delete",
+		map[string]string{"path": "Projetos"})
+	if response.Code != http.StatusOK {
+		t.Fatalf("folder delete status = %d, body = %s", response.Code, response.Body.String())
+	}
+	result := decodeResponse[map[string]int64](t, response)
+	if result["moved"] != 2 {
+		t.Fatalf("moved count = %d, want 2", result["moved"])
+	}
+
+	for _, id := range []int64{insideID, nestedID} {
+		note, err := app.GetNote(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if note.Folder != "" {
+			t.Fatalf("note %d folder = %q, want root", id, note.Folder)
+		}
+	}
+	outside, err := app.GetNote(outsideID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outside.Folder != "Projetos antigos" {
+		t.Fatalf("unrelated note folder = %q, want Projetos antigos", outside.Folder)
+	}
+	folders, err := app.FolderTree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, folder := range folders {
+		if folder.Path == "Projetos" {
+			t.Fatalf("deleted folder remains in tree: %#v", folders)
+		}
+	}
+
+	response = performJSONRequest(t, handler, http.MethodPost, "/api/folders/delete",
+		map[string]string{"path": "Projetos"})
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("missing folder delete status = %d, want 404", response.Code)
+	}
+}
+
 func TestRestoreBackupIsConsistentWithConcurrentUploads(t *testing.T) {
 	app := newTestApp(t)
 	noteID, err := app.CreateNote(Note{Title: "Alvo", Folder: "Notas"})
