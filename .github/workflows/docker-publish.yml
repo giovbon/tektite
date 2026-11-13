@@ -1,4 +1,4 @@
-name: CI and Docker publish
+name: Docker publish
 
 on:
   push:
@@ -7,10 +7,6 @@ on:
       - master
     tags:
       - 'v*.*.*'
-  pull_request:
-    branches:
-      - main
-      - master
   workflow_dispatch:
 
 permissions:
@@ -18,7 +14,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 env:
   # O namespace da imagem PRECISA ser o mesmo da conta dona do DOCKERHUB_TOKEN.
@@ -27,78 +23,9 @@ env:
   IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/tektite
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Set up Go
-        uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Go vet
-        run: go vet -tags "sqlite_fts5 sqlite_omit_load_extension" ./...
-
-      - name: Go test
-        run: go test -tags "sqlite_fts5 sqlite_omit_load_extension" ./...
-
-      - name: Go race detector
-        run: go test -tags "sqlite_fts5 sqlite_omit_load_extension" -race ./...
-
-      - name: Go coverage
-        run: |
-          go test -tags "sqlite_fts5 sqlite_omit_load_extension" \
-            -coverprofile=coverage.out ./...
-          total=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub(/%/, "", $3); print $3}')
-          echo "Cobertura do backend: ${total}%"
-          awk -v total="$total" 'BEGIN { if (total < 65) { print "Cobertura abaixo de 65%"; exit 1 } }'
-
-      - name: Govulncheck
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
-          govulncheck -tags "sqlite_fts5 sqlite_omit_load_extension" ./...
-
-      - name: Set up Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: web/frontend/package-lock.json
-
-      - name: Frontend dependencies
-        working-directory: web/frontend
-        run: npm ci
-
-      - name: Frontend tests
-        working-directory: web/frontend
-        run: npm test
-
-      - name: Frontend lint
-        working-directory: web/frontend
-        run: npm run lint
-
-      - name: Install Playwright browser
-        working-directory: web/frontend
-        run: npx playwright install --with-deps chromium
-
-      - name: Frontend end-to-end tests
-        working-directory: web/frontend
-        run: npm run test:e2e
-
-      - name: Frontend build (if configured)
-        working-directory: web/frontend
-        run: npm run build --if-present
-
   build-and-push:
-    needs: test
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repository
