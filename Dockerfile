@@ -8,7 +8,7 @@
 # Também não fixamos --platform=$BUILDPLATFORM: o stage precisa rodar na
 # arquitetura de destino para que o cgo use o compilador nativo. Em builds
 # multi-arquitetura o arm64 roda via QEMU (o workflow configura o QEMU).
-FROM golang:1.21-alpine AS builder
+FROM golang:1.27-alpine AS builder
 
 WORKDIR /src
 

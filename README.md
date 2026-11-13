@@ -4,7 +4,7 @@ Aplicação local de notas Markdown com backend Go, SQLite/FTS5 e interface resp
 
 ## Requisitos
 
-- Go 1.21 ou superior.
+- Go 1.27 ou superior.
 - Um compilador C disponível para o `cgo` (o driver SQLite compila o SQLite junto ao binário).
 
 ## Executar

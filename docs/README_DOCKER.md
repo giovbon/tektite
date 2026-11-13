@@ -128,7 +128,7 @@ giovbon/tektite:<sha>       # hash curto
 
 ### Multi-estágio
 
-1. **Stage 1 (Builder)**: Go 1.21-alpine
+1. **Stage 1 (Builder)**: Go 1.27-alpine
    - Instala certificados CA, tzdata, gcc e musl-dev
    - Baixa dependências Go
    - Compila binário estático com `CGO_ENABLED=1` (necessário para o SQLite)
@@ -141,7 +141,7 @@ giovbon/tektite:<sha>       # hash curto
 ### Multi-arquitetura
 
 ```dockerfile
-FROM golang:1.21-alpine AS builder
+FROM golang:1.27-alpine AS builder
 # O stage roda na plataforma de destino (arm64 via QEMU no CI), pois o cgo
 # precisa de um compilador nativo.
 CGO_ENABLED=1 GOOS=$TARGETOS GOARCH=$TARGETARCH \

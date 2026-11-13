@@ -60,7 +60,7 @@ jobs:
 
       - name: Govulncheck
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
           govulncheck -tags "sqlite_fts5 sqlite_omit_load_extension" ./...
 
       - name: Set up Node

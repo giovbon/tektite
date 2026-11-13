@@ -7,7 +7,7 @@ Este diretório contém os arquivos de configuração Docker para construir, rod
 ### 1. Dockerfile
 Um Dockerfile multi-estágio para construir a aplicação PKM Notes:
 
-- **Estágio 1 (Builder)**: Compila o binário Go usando a imagem `golang:1.21-alpine`
+- **Estágio 1 (Builder)**: Compila o binário Go usando a imagem `golang:1.27-alpine`
   - Suporta múltiplas arquiteturas (amd64, arm64)
   - Usa `go mod download` para cache de dependências
   - Compila para arquitetura nativa detectada automaticamente
