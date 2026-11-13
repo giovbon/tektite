@@ -545,16 +545,11 @@
         min-width: 0;
         min-height: 0;
         flex-direction: column;
-        padding: 8px 10px;
-    }
-
-    .edit-pane {
-        padding-right: 20px;
+        padding: 8px 16px;
     }
 
     .preview-pane {
         padding-right: 0;
-        padding-left: 26px;
     }
 
     .pane-label {
@@ -682,13 +677,30 @@
         min-height: 0;
         flex: 1;
         overflow: auto;
-        padding-right: 16px;
+        padding: 12px 28px 12px 12px;
         color: var(--text);
         font-size: var(--text-base);
         line-height: var(--leading-relaxed);
         overflow-wrap: anywhere;
         scrollbar-width: thin;
         scrollbar-color: var(--scrollbar-thumb) transparent;
+    }
+
+    .editor-workspace[data-editor-mode="edit"] .source-editor,
+    .editor-workspace[data-editor-mode="preview"] .markdown-preview {
+        width: 100%;
+        max-width: 42rem;
+        align-self: center;
+    }
+
+    /* Em modo de coluna única o painel fica centralizado, então o
+       espaçamento precisa ser simétrico para o texto não deslocar. */
+    .editor-workspace[data-editor-mode="preview"] .preview-pane {
+        padding-right: 16px;
+    }
+
+    .editor-workspace[data-editor-mode="preview"] .markdown-preview {
+        padding-right: 16px;
     }
 
     .markdown-preview::-webkit-scrollbar {
@@ -771,6 +783,22 @@
 
     .markdown-preview a {
         color: var(--accent);
+    }
+
+    .markdown-preview .is-jump-target {
+        border-radius: var(--radius-xs);
+        animation: backlink-flash 1.6s var(--ease-standard);
+    }
+
+    @keyframes backlink-flash {
+        0%,
+        35% {
+            background: color-mix(in srgb, var(--accent) 26%, transparent);
+        }
+
+        100% {
+            background: transparent;
+        }
     }
 
     .markdown-preview blockquote {
@@ -1147,9 +1175,13 @@
         }
 
         .topbar {
-            min-height: 56px;
+            min-height: 48px;
             margin: 0 -16px;
             padding: 0 16px;
+        }
+
+        body.is-editor-view .topbar {
+            min-height: 44px;
         }
 
         .topbar-title {
@@ -1276,14 +1308,44 @@
         }
 
         .editor-toolbar {
-            flex-wrap: wrap;
-            align-items: center;
-            gap: 6px;
+            min-height: 38px;
+            flex-wrap: nowrap;
+            gap: 4px;
+            padding: 0 8px;
+        }
+
+        .markdown-tools {
+            min-width: 0;
+            flex: 1 1 auto;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            overscroll-behavior-x: contain;
+            scrollbar-width: none;
+        }
+
+        .markdown-tools::-webkit-scrollbar {
+            display: none;
+        }
+
+        .markdown-tools button {
+            min-width: 28px;
+            height: 28px;
+            padding: 0 5px;
+        }
+
+        .toolbar-divider {
+            height: 16px;
+            margin: 0 2px;
         }
 
         .editor-toolbar-right {
             width: auto;
+            flex: 0 0 auto;
             justify-content: flex-end;
+        }
+
+        .editor-mode {
+            padding: 5px 7px;
         }
 
         .topbar-editor-actions {
@@ -1302,6 +1364,10 @@
             padding: 9px 12px;
         }
 
+        .markdown-preview {
+            padding: 12px;
+        }
+
         .source-editor {
             min-height: 0;
         }
@@ -1317,10 +1383,6 @@
 
         .tree-note-delete {
             opacity: 1;
-        }
-
-        .markdown-tools {
-            flex-wrap: wrap;
         }
 
         .title-field {

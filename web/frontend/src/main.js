@@ -2,6 +2,7 @@ import { requestJSON } from './lib/api-client.js';
 import { CommandPalette } from './lib/command-palette.js';
 import { ensureFrontmatterTags, extractMarkdownOutline, frontmatterLineOffset, highlightMarkdown, MarkdownEditor, parseFrontmatter, stripFrontmatter } from './lib/markdown-editor.js';
 import { GraphView } from './lib/graph-view.js';
+import { findLinkOccurrence, linkTargetMatches } from './lib/note-links.js';
 import { highlightCode } from './lib/syntax-highlight.js';
 import { getScrollSpacerHeight, mapEditorToPreview, mapPreviewToEditor } from './lib/scroll-sync.js';
 
@@ -279,13 +280,35 @@ function setupEventListeners() {
             showMessage(`Não foi possível encerrar a sessão: ${error.message}`, 'error');
         }
     });
-    elements.attachmentsButton.addEventListener('click', () => {
-        elements.attachmentsDialog.showModal();
+    elements.attachmentsButton.addEventListener('click', event => {
+        const dialog = elements.attachmentsDialog;
+        if (dialog.open) {
+            dialog.close();
+            return;
+        }
+        dialog.style.visibility = 'hidden';
+        dialog.show();
+        positionAttachmentsDialog();
+        dialog.style.visibility = '';
+        elements.attachmentsButton.setAttribute('aria-expanded', 'true');
+        // Apenas navegação por teclado move o foco para dentro do popover,
+        // evitando interromper a seleção de texto ao abrir com o mouse.
+        if (event.detail === 0) document.querySelector('#closeAttachments').focus();
         if (state.noteID !== null) void loadAttachments(state.noteID);
     });
     document.querySelector('#closeAttachments').addEventListener('click', () => elements.attachmentsDialog.close());
-    elements.attachmentsDialog.addEventListener('click', event => {
-        if (event.target === elements.attachmentsDialog) elements.attachmentsDialog.close();
+    elements.attachmentsDialog.addEventListener('close', () => {
+        elements.attachmentsButton.setAttribute('aria-expanded', 'false');
+    });
+    document.addEventListener('pointerdown', event => {
+        const dialog = elements.attachmentsDialog;
+        if (!dialog.open || dialog.contains(event.target) || elements.attachmentsButton.contains(event.target)) return;
+        dialog.close();
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key !== 'Escape' || !elements.attachmentsDialog.open) return;
+        elements.attachmentsDialog.close();
+        elements.attachmentsButton.focus();
     });
     document.querySelector('#addAttachment').addEventListener('click', () => elements.attachmentInput.click());
     elements.attachmentInput.addEventListener('change', event => {
@@ -402,6 +425,7 @@ function setupEventListeners() {
     }, true);
     window.addEventListener('resize', () => {
         editorLinePositionCache = null;
+        positionAttachmentsDialog();
         if (state.view === 'editor' && window.matchMedia('(max-width: 700px)').matches &&
             elements.editorWorkspace.dataset.editorMode === 'split') {
             setEditorMode('edit');
@@ -796,7 +820,15 @@ function createNoteCard(note, contentSearch) {
     if (contentSearch) {
         const preview = document.createElement('span');
         preview.className = 'note-preview';
-        appendHighlightedPreview(preview, note.preview || 'Nenhum trecho disponível.');
+        const snippets = Array.isArray(note.snippets) && note.snippets.length
+            ? note.snippets
+            : [note.preview || 'Nenhum trecho disponível.'];
+        for (const value of snippets) {
+            const snippet = document.createElement('span');
+            snippet.className = 'note-preview-snippet';
+            appendHighlightedPreview(snippet, value);
+            preview.append(snippet);
+        }
         main.append(preview);
     }
     const info = document.createElement('div');
@@ -813,7 +845,7 @@ function createNoteCard(note, contentSearch) {
         tag.textContent = `#${value}`;
         tags.append(tag);
     }
-    info.append(tags);
+    if (tags.childElementCount) info.append(tags);
     if (note.folder) {
         const folder = document.createElement('span');
         folder.className = 'note-folder';
@@ -823,6 +855,13 @@ function createNoteCard(note, contentSearch) {
         label.textContent = note.folder;
         folder.append(label);
         info.append(folder);
+    }
+    if (contentSearch && note.occurrences > 1) {
+        const occurrences = document.createElement('span');
+        occurrences.className = 'note-hit-count';
+        occurrences.textContent = `${note.occurrences} ocorrências`;
+        occurrences.title = `O termo pesquisado aparece ${note.occurrences} vezes nesta nota`;
+        info.append(occurrences);
     }
     const actions = document.createElement('div');
     actions.className = 'note-actions';
@@ -834,7 +873,9 @@ function createNoteCard(note, contentSearch) {
     remove.title = 'Excluir';
     remove.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M6 7l1 14h10l1-14M9 7V4h6v3"/></svg>';
     actions.append(remove);
-    card.append(main, info, actions);
+    card.append(main);
+    if (info.childElementCount) card.append(info);
+    card.append(actions);
     return card;
 }
 
@@ -1265,6 +1306,7 @@ function showEditor(note) {
     elements.attachmentsButton.setAttribute('aria-label', 'Abrir anexos');
     resetBacklinks();
     state.pendingBacklink = null;
+    state.pendingOutlineLine = null;
     elements.saveStatus.className = 'save-status';
     elements.saveStatus.textContent = note ? 'Salvo' : 'Rascunho';
     const content = note ? ensureFrontmatterTags(note.content, note.tags || []) : '';
@@ -1272,6 +1314,8 @@ function showEditor(note) {
     updateOutlineCount();
     renderedPreviewMarkdown = '';
     editorLinePositionCache = null;
+    scrollSyncSuspendedUntil = 0;
+    programmaticScroll = null;
     elements.noteContent.value = content;
     state.savedDraft = getDraft();
     markdownEditor.setValue(content);
@@ -1458,6 +1502,26 @@ function setSaveStatus(message, stateName) {
     elements.saveStatus.className = `save-status${stateName ? ` is-${stateName}` : ''}`;
 }
 
+function positionAttachmentsDialog() {
+    const dialog = elements.attachmentsDialog;
+    if (!dialog.open) return;
+    const button = elements.attachmentsButton.getBoundingClientRect();
+    const width = dialog.offsetWidth;
+    const height = dialog.offsetHeight;
+    const margin = 12;
+    const gap = 8;
+    const left = Math.max(margin, Math.min(
+        button.right - width,
+        window.innerWidth - width - margin
+    ));
+    let top = button.bottom + gap;
+    if (top + height > window.innerHeight - margin) {
+        top = Math.max(margin, button.top - height - gap);
+    }
+    dialog.style.left = `${Math.round(left)}px`;
+    dialog.style.top = `${Math.round(top)}px`;
+}
+
 async function loadAttachments(noteID) {
     try {
         const attachments = await requestJSON(`/api/notes/${noteID}/attachments`);
@@ -1491,6 +1555,7 @@ function renderAttachments(attachments, noteID) {
     const label = attachments.length ? `Anexos (${attachments.length})` : 'Abrir anexos';
     elements.attachmentsButton.title = label;
     elements.attachmentsButton.setAttribute('aria-label', label);
+    positionAttachmentsDialog();
 }
 
 function formatFileSize(size) {
@@ -1775,6 +1840,7 @@ function updatePreview() {
                     state.pendingOutlineLine = null;
                     requestAnimationFrame(() => scrollToOutlineHeading(pendingLine));
                 }
+                runPendingBacklink();
             }
         } catch (error) {
             if (requestID === previewRequestID) {
@@ -2066,7 +2132,19 @@ function getScrollLandmarks() {
             anchor.previewTop > 0 && anchor.previewTop < previewScrollable);
 }
 
+function hasPreviewSelection() {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !selection.rangeCount) return false;
+    return elements.markdownPreview.contains(selection.getRangeAt(0).commonAncestorContainer);
+}
+
 function handleEditorScroll(source) {
+    if (elements.editorWorkspace.dataset.editorMode !== 'split') return;
+    if (source === elements.markdownPreview && hasPreviewSelection()) return;
+    if (performance.now() < scrollSyncSuspendedUntil) {
+        if (programmaticScroll?.element === source) programmaticScroll = null;
+        return;
+    }
     if (programmaticScroll?.element === source) {
         const matched = Math.abs(source.scrollTop - programmaticScroll.scrollTop) < 1;
         programmaticScroll = null;
@@ -2095,6 +2173,9 @@ function handleEditorScroll(source) {
 }
 
 function syncEditorScrollFromSource() {
+    if (elements.editorWorkspace.dataset.editorMode !== 'split') return;
+    if (hasPreviewSelection()) return;
+    if (performance.now() < scrollSyncSuspendedUntil) return;
     const editor = elements.noteContent;
     const preview = elements.markdownPreview;
     const targetTop = mapEditorToPreview(
@@ -2416,51 +2497,77 @@ function renderOutlinePanel() {
     }
 }
 
+function suspendScrollSync(duration = 350) {
+    scrollSyncSuspendedUntil = performance.now() + duration;
+}
+
+function scrollEditorToLine(lineIndex) {
+    const lineTop = measureEditorLines(elements.noteContent.value, [lineIndex]).get(lineIndex);
+    if (!Number.isFinite(lineTop)) return false;
+    const targetTop = Math.max(0, lineTop - 12);
+    suspendScrollSync();
+    programmaticScroll = { element: elements.noteContent, scrollTop: targetTop };
+    elements.noteContent.scrollTop = targetTop;
+    elements.noteContentHighlight.scrollTop = elements.noteContent.scrollTop;
+    elements.noteContentHighlight.scrollLeft = elements.noteContent.scrollLeft;
+    return true;
+}
+
+function scrollPreviewToElement(element, { offset = 12, flash = false } = {}) {
+    const preview = elements.markdownPreview;
+    const block = element.closest('p, li, h1, h2, h3, h4, h5, h6, pre, blockquote, tr, table, img') || element;
+    const targetTop = Math.max(0, Math.min(
+        preview.scrollHeight - preview.clientHeight,
+        preview.scrollTop + element.getBoundingClientRect().top - preview.getBoundingClientRect().top - offset
+    ));
+    suspendScrollSync();
+    programmaticScroll = { element: preview, scrollTop: targetTop };
+    preview.scrollTop = targetTop;
+    if (flash) {
+        block.classList.add('is-jump-target');
+        window.setTimeout(() => block.classList.remove('is-jump-target'), 1600);
+    }
+}
+
+function findPreviewHeading(heading) {
+    const headings = [...elements.markdownPreview.querySelectorAll('h1, h2, h3, h4, h5, h6')];
+    return headings.find(element => Number(element.dataset.sourceLine) === heading.bodyLine) ||
+        headings[state.outline.indexOf(heading)] ||
+        headings.find(element => element.textContent.trim() === heading.text) ||
+        null;
+}
+
+function runPendingBacklink() {
+    const target = state.pendingBacklink;
+    if (!target || state.view !== 'editor') return;
+    state.pendingBacklink = null;
+    const mode = elements.editorWorkspace.dataset.editorMode;
+    const occurrence = findLinkOccurrence(elements.noteContent.value, target, state.noteFolder);
+    if (mode !== 'preview' && occurrence) scrollEditorToLine(occurrence.line);
+    if (mode === 'edit') return;
+    requestAnimationFrame(() => {
+        const anchor = [...elements.markdownPreview.querySelectorAll('a[href]')]
+            .find(link => linkTargetMatches(link.getAttribute('href'), target, state.noteFolder));
+        if (anchor) scrollPreviewToElement(anchor, { offset: 40, flash: true });
+    });
+}
+
 function scrollToOutlineHeading(line) {
     const lineIndex = Number(line);
     const heading = state.outline.find(item => item.line === lineIndex);
     if (!heading) return;
+    if (window.matchMedia('(max-width: 700px)').matches) closePanel();
     const mode = elements.editorWorkspace.dataset.editorMode;
     if (mode !== 'edit' && renderedPreviewMarkdown !== stripFrontmatter(elements.noteContent.value)) {
         state.pendingOutlineLine = lineIndex;
         updatePreview();
         return;
     }
-    if (mode !== 'preview') {
-        const markdown = elements.noteContent.value;
-        const lines = markdown.split('\n');
-        const lineTop = measureEditorLines(markdown, [heading.line]).get(heading.line);
-        let caret = 0;
-        for (let index = 0; index < heading.line; index++) caret += lines[index].length + 1;
-        elements.noteContent.focus();
-        elements.noteContent.setSelectionRange(caret, caret);
-        requestAnimationFrame(() => {
-            if (!Number.isFinite(lineTop)) return;
-            elements.noteContent.scrollTop = Math.max(0, lineTop - elements.noteContent.clientHeight / 3);
-            handleEditorScroll(elements.noteContent);
-        });
-    }
-
+    if (mode !== 'preview') scrollEditorToLine(heading.line);
     if (mode !== 'edit') {
-        const headings = [...elements.markdownPreview.querySelectorAll('h1, h2, h3, h4, h5, h6')];
-        const headingIndex = state.outline.indexOf(heading);
-        const previewHeading = headings.find(element =>
-            Number(element.dataset.sourceLine) === heading.bodyLine
-        ) || headings[headingIndex] || headings.find(element =>
-            element.textContent.trim() === heading.text
-        );
+        const previewHeading = findPreviewHeading(heading);
         if (!previewHeading) return;
-        requestAnimationFrame(() => {
-            const preview = elements.markdownPreview;
-            const targetTop = Math.max(0, Math.min(
-                preview.scrollHeight - preview.clientHeight,
-                preview.scrollTop + previewHeading.getBoundingClientRect().top - preview.getBoundingClientRect().top
-            ));
-            if (Math.abs(preview.scrollTop - targetTop) >= 1) {
-                programmaticScroll = { element: preview, scrollTop: targetTop };
-                preview.scrollTop = targetTop;
-            }
-        });
+        requestAnimationFrame(() => scrollPreviewToElement(previewHeading));
     }
 }
 
@@ -2529,9 +2636,9 @@ function createTreeDocumentIcon(className) {
     icon.setAttribute('aria-hidden', 'true');
     icon.classList.add(className);
     for (const [className, pathData] of [
-        ['tree-document-page', 'M5 2.5h8l4.5 4.5v15H5z'],
-        ['tree-document-fold', 'M13 2.5V7h4.5'],
-        ['tree-document-lines', 'M8 11h7m-7 3.5h7m-7 3.5h5']
+        ['tree-document-page', 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'],
+        ['tree-document-fold', 'M14 2v6h6'],
+        ['tree-document-lines', 'M16 13H8m8 4H8m5-8H8']
     ]) {
         const path = document.createElementNS(namespace, 'path');
         path.setAttribute('d', pathData);
@@ -2720,7 +2827,15 @@ function handlePanelClick(event) {
     }
     const backlink = event.target.closest('[data-backlink-note]');
     if (backlink) {
-        void openNote(Number(backlink.dataset.backlinkNote));
+        const target = state.noteID === null
+            ? null
+            : {
+                id: state.noteID,
+                title: (state.savedDraft?.title || elements.noteTitle.value).trim(),
+                folder: state.noteFolder
+            };
+        if (window.matchMedia('(max-width: 700px)').matches) closePanel();
+        void openNote(Number(backlink.dataset.backlinkNote), { backlinkTarget: target });
         return;
     }
     const remove = event.target.closest('[data-delete-tree-note]');

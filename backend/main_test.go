@@ -418,6 +418,38 @@ func TestLargeCollectionSearchAndPagination(t *testing.T) {
 	}
 }
 
+func TestContentSearchReportsRepeatedMatches(t *testing.T) {
+	app, err := NewApp(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Close()
+
+	filler := strings.Repeat("contexto adicional ", 30)
+	content := filler + "Oasis voltou em 2024. " + filler + "Oásis é uma banda. " + filler + "oasis encerra a nota."
+	if _, err := app.CreateNote(Note{Title: "Oasis", Content: content}); err != nil {
+		t.Fatal(err)
+	}
+
+	page, err := app.SearchNotes("oasis", "content", "", "", 10, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 {
+		t.Fatalf("content search returned %d notes, want 1", len(page.Items))
+	}
+	item := page.Items[0]
+	if item.Occurrences != 3 {
+		t.Fatalf("occurrences = %d, want 3 (including the accented match)", item.Occurrences)
+	}
+	if len(item.Snippets) < 2 {
+		t.Fatalf("snippets = %#v, want excerpts for matches in separate passages", item.Snippets)
+	}
+	if item.Preview != item.Snippets[0] || !strings.Contains(item.Preview, "<mark>") {
+		t.Fatalf("preview = %q, snippets = %#v", item.Preview, item.Snippets)
+	}
+}
+
 func TestFolderValidation(t *testing.T) {
 	note := Note{Title: "safe title", Folder: "../outside"}
 	if err := validateNote(&note); err == nil {

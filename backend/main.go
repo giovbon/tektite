@@ -53,12 +53,14 @@ type Note struct {
 }
 
 type NoteSummary struct {
-	ID        int64    `json:"id"`
-	Title     string   `json:"title"`
-	Folder    string   `json:"folder"`
-	Tags      []string `json:"tags,omitempty"`
-	Preview   string   `json:"preview"`
-	UpdatedAt string   `json:"updated_at"`
+	ID          int64    `json:"id"`
+	Title       string   `json:"title"`
+	Folder      string   `json:"folder"`
+	Tags        []string `json:"tags,omitempty"`
+	Preview     string   `json:"preview"`
+	Snippets    []string `json:"snippets,omitempty"`
+	Occurrences int      `json:"occurrences,omitempty"`
+	UpdatedAt   string   `json:"updated_at"`
 }
 
 type Page struct {
@@ -468,10 +470,6 @@ func (a *App) SearchNotes(query, mode, folder, tag string, limit, offset int) (P
 	if err != nil {
 		return Page{}, err
 	}
-	preview := "substr(COALESCE(n.content, ''), 1, 180)"
-	if mode == "content" {
-		preview = "snippet(notes_fts, 1, '<mark>', '</mark>', '…', 48)"
-	}
 	var total int
 	if err := a.db.QueryRow(`SELECT COUNT(*)
 		FROM notes_fts JOIN notes n ON n.rowid = notes_fts.rowid
@@ -480,7 +478,27 @@ func (a *App) SearchNotes(query, mode, folder, tag string, limit, offset int) (P
 		match, folder, folder, tag, tag).Scan(&total); err != nil {
 		return Page{}, err
 	}
-	rows, err := a.db.Query(`SELECT n.rowid, n.title, n.folder, `+preview+`, n.updated_at, COALESCE(n.tags, '')
+
+	if mode == "content" {
+		rows, err := a.db.Query(`SELECT n.rowid, n.title, n.folder,
+			highlight(notes_fts, 1, char(30), char(31)), n.updated_at, COALESCE(n.tags, '')
+			FROM notes_fts JOIN notes n ON n.rowid = notes_fts.rowid
+			WHERE notes_fts MATCH ? AND (n.folder = ? OR ? = '')
+			AND (? = '' OR instr(',' || lower(COALESCE(n.tags, '')) || ',', ',' || lower(?) || ',') > 0)
+			ORDER BY notes_fts.rank, n.updated_at DESC, n.rowid DESC LIMIT ? OFFSET ?`,
+			match, folder, folder, tag, tag, limit, offset)
+		if err != nil {
+			return Page{}, err
+		}
+		defer rows.Close()
+		items, err := scanContentSummaries(rows)
+		if err != nil {
+			return Page{}, err
+		}
+		return Page{Items: items, Total: total, Limit: limit, Offset: offset}, nil
+	}
+
+	rows, err := a.db.Query(`SELECT n.rowid, n.title, n.folder, substr(COALESCE(n.content, ''), 1, 180), n.updated_at, COALESCE(n.tags, '')
 		FROM notes_fts JOIN notes n ON n.rowid = notes_fts.rowid
 		WHERE notes_fts MATCH ? AND (n.folder = ? OR ? = '')
 		AND (? = '' OR instr(',' || lower(COALESCE(n.tags, '')) || ',', ',' || lower(?) || ',') > 0)
@@ -497,6 +515,119 @@ func (a *App) SearchNotes(query, mode, folder, tag string, limit, offset int) (P
 	return Page{Items: items, Total: total, Limit: limit, Offset: offset}, nil
 }
 
+const (
+	contentMatchStart       = '\x1e'
+	contentMatchEnd         = '\x1f'
+	maxContentSnippets      = 2
+	maxContentSnippetLength = 480
+	snippetContextBefore    = 110
+	snippetContextAfter     = 190
+)
+
+func scanContentSummaries(rows *sql.Rows) ([]NoteSummary, error) {
+	items := make([]NoteSummary, 0)
+	for rows.Next() {
+		var item NoteSummary
+		var marked, tags string
+		if err := rows.Scan(&item.ID, &item.Title, &item.Folder, &marked, &item.UpdatedAt, &tags); err != nil {
+			return nil, err
+		}
+		item.Tags = splitTags(tags)
+		item.Snippets = buildContentSnippets(marked)
+		item.Occurrences = strings.Count(marked, string(contentMatchStart))
+		if len(item.Snippets) > 0 {
+			item.Preview = item.Snippets[0]
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+// buildContentSnippets turns the fully highlighted note content produced by
+// FTS5 highlight() into a few short excerpts around the matches.
+func buildContentSnippets(marked string) []string {
+	type matchSpan struct{ start, end int }
+	spans := make([]matchSpan, 0)
+	for index := 0; index < len(marked); index++ {
+		if marked[index] != contentMatchStart {
+			continue
+		}
+		relativeEnd := strings.IndexByte(marked[index+1:], contentMatchEnd)
+		if relativeEnd < 0 {
+			break
+		}
+		end := index + 1 + relativeEnd + 1
+		spans = append(spans, matchSpan{start: index, end: end})
+		index = end - 1
+	}
+	if len(spans) == 0 {
+		return nil
+	}
+
+	type snippetGroup struct {
+		start, end  int
+		first, last int
+	}
+	groups := make([]snippetGroup, 0, maxContentSnippets)
+	for _, span := range spans {
+		start := max(0, span.start-snippetContextBefore)
+		end := min(len(marked), span.end+snippetContextAfter)
+		if len(groups) > 0 && start <= groups[len(groups)-1].end &&
+			end-groups[len(groups)-1].start <= maxContentSnippetLength {
+			last := len(groups) - 1
+			groups[last].end = max(groups[last].end, end)
+			groups[last].last = span.end
+			continue
+		}
+		groups = append(groups, snippetGroup{start: start, end: end, first: span.start, last: span.end})
+	}
+
+	if len(groups) > maxContentSnippets {
+		groups = groups[:maxContentSnippets]
+	}
+	snippets := make([]string, 0, len(groups))
+	for _, group := range groups {
+		start, end := group.start, group.end
+		if start > 0 {
+			if offset := strings.IndexAny(marked[start:group.first], " \t\r\n"); offset >= 0 {
+				start += offset + 1
+			}
+		}
+		if end < len(marked) {
+			if offset := strings.LastIndexAny(marked[group.last:end], " \t\r\n"); offset >= 0 {
+				end = group.last + offset
+			}
+		}
+		excerpt := strings.Join(strings.Fields(marked[start:end]), " ")
+		if excerpt == "" {
+			continue
+		}
+		excerpt = strings.ReplaceAll(excerpt, string(contentMatchStart), "<mark>")
+		excerpt = strings.ReplaceAll(excerpt, string(contentMatchEnd), "</mark>")
+		if start > 0 {
+			excerpt = "…" + excerpt
+		}
+		if end < len(marked) {
+			excerpt += "…"
+		}
+		snippets = append(snippets, excerpt)
+	}
+	return snippets
+}
+
+func splitTags(tags string) []string {
+	if tags == "" {
+		return nil
+	}
+	result := make([]string, 0)
+	for _, tag := range strings.Split(tags, ",") {
+		if tag = strings.TrimSpace(tag); tag != "" {
+			result = append(result, tag)
+		}
+	}
+	return result
+}
+
 func scanSummaries(rows *sql.Rows) ([]NoteSummary, error) {
 	items := make([]NoteSummary, 0)
 	for rows.Next() {
@@ -505,13 +636,7 @@ func scanSummaries(rows *sql.Rows) ([]NoteSummary, error) {
 		if err := rows.Scan(&item.ID, &item.Title, &item.Folder, &item.Preview, &item.UpdatedAt, &tags); err != nil {
 			return nil, err
 		}
-		if tags != "" {
-			for _, tag := range strings.Split(tags, ",") {
-				if tag = strings.TrimSpace(tag); tag != "" {
-					item.Tags = append(item.Tags, tag)
-				}
-			}
-		}
+		item.Tags = splitTags(tags)
 		items = append(items, item)
 	}
 	return items, rows.Err()
