@@ -63,6 +63,10 @@ type backupAttachment struct {
 // file. Note IDs are preserved so attachment URLs stored in note content keep
 // working after a restore.
 func (a *App) ExportBackup(destination io.Writer) error {
+	// Keep deletions out while the archive reads attachment files.
+	a.dataMu.RLock()
+	defer a.dataMu.RUnlock()
+
 	manifest := backupManifest{
 		Format:    backupFormat,
 		Version:   backupVersion,
@@ -252,6 +256,11 @@ func (a *App) RestoreBackup(data []byte) (int, int, error) {
 	if err := writeRestoreFiles(staging, manifest.Attachments, files); err != nil {
 		return 0, 0, err
 	}
+
+	// The swap of the live attachments directory and the database commit must
+	// be invisible to concurrent uploads, deletions and exports.
+	a.dataMu.Lock()
+	defer a.dataMu.Unlock()
 
 	restoreAttachments, cleanupAttachments, err := swapAttachmentsDir(a.attachmentsDir, staging)
 	if err != nil {

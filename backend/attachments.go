@@ -83,6 +83,9 @@ func (a *App) ListAttachments(noteID int64) ([]Attachment, error) {
 }
 
 func (a *App) SaveAttachment(noteID int64, source io.Reader, originalFilename string) (Attachment, error) {
+	a.dataMu.RLock()
+	defer a.dataMu.RUnlock()
+
 	var exists int
 	if err := a.db.QueryRow("SELECT 1 FROM notes WHERE rowid = ?", noteID).Scan(&exists); err != nil {
 		return Attachment{}, err
@@ -169,6 +172,9 @@ func (a *App) GetAttachment(noteID, attachmentID int64) (Attachment, string, err
 }
 
 func (a *App) DeleteAttachment(noteID, attachmentID int64) error {
+	a.dataMu.Lock()
+	defer a.dataMu.Unlock()
+
 	item, filePath, err := a.GetAttachment(noteID, attachmentID)
 	if err != nil {
 		return err

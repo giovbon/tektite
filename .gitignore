@@ -9,5 +9,13 @@
 # Go test binaries
 *.test
 
+# Frontend test artifacts
+/web/frontend/node_modules/
+/web/frontend/.auth/
+/web/frontend/.e2e-data/
+/web/frontend/playwright-report/
+/web/frontend/test-results/
+/.e2e-data/
+
 
 /basalt/

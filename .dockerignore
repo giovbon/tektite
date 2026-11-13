@@ -13,3 +13,10 @@ attachments/
 
 # Dependências instaladas no host
 web/frontend/node_modules/
+
+# Artefatos locais dos testes de frontend
+web/frontend/.auth/
+web/frontend/.e2e-data/
+web/frontend/playwright-report/
+web/frontend/test-results/
+.e2e-data/

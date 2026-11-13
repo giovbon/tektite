@@ -8,8 +8,13 @@ O workflow fica em `.github/workflows/docker-publish.yml` e tem dois jobs:
 Roda em todo push e pull request:
 
 - `go vet` e `go test` com as tags `sqlite_fts5 sqlite_omit_load_extension`;
-- `npm ci` e `npm test` em `web/frontend`;
+- `go test -race` e um piso mínimo de cobertura do backend;
+- `govulncheck` para vulnerabilidades conhecidas nas dependências Go;
+- `npm ci`, `npm test`, `npm run lint` e `npm run test:e2e` em `web/frontend`;
 - `npm run build --if-present` (no-op enquanto não houver script `build`).
+
+Os testes E2E instalam o Chromium do Playwright e sobem um backend isolado com
+autenticação habilitada; não usam dados reais.
 
 O Go é instalado a partir da versão declarada em `go.mod` (`go-version-file`).
 

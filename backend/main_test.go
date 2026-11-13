@@ -260,11 +260,18 @@ func TestNotesAPIAndPagination(t *testing.T) {
 		t.Fatalf("delete status = %d, body = %s", deleteResponse.Code, deleteResponse.Body.String())
 	}
 
-	invalidSearch := httptest.NewRequest(http.MethodGet, "/api/search?q=words", nil)
+	defaultSearch := httptest.NewRequest(http.MethodGet, "/api/search?q=words", nil)
+	defaultResponse := httptest.NewRecorder()
+	handler.ServeHTTP(defaultResponse, defaultSearch)
+	if defaultResponse.Code != http.StatusOK {
+		t.Fatalf("search without mode status = %d, body = %s", defaultResponse.Code, defaultResponse.Body.String())
+	}
+
+	invalidSearch := httptest.NewRequest(http.MethodGet, "/api/search?q=words&mode=invalid", nil)
 	invalidResponse := httptest.NewRecorder()
 	handler.ServeHTTP(invalidResponse, invalidSearch)
 	if invalidResponse.Code != http.StatusBadRequest {
-		t.Fatalf("search without mode status = %d", invalidResponse.Code)
+		t.Fatalf("search with invalid mode status = %d", invalidResponse.Code)
 	}
 }
 

@@ -86,6 +86,11 @@ type App struct {
 	attachmentsDir string
 	auth           *authenticator
 	backupMu       sync.Mutex
+	// dataMu keeps the attachments directory consistent with the database.
+	// Uploads and exports take a read lock; restores and deletions take the
+	// write lock, so a restore can never swap the directory while a file is
+	// being written or while a backup is reading it.
+	dataMu sync.RWMutex
 }
 
 type folderBuilder struct {
@@ -669,6 +674,8 @@ func scanSummaries(rows *sql.Rows) ([]NoteSummary, error) {
 
 func makeFTSQuery(query, mode string) (string, error) {
 	switch mode {
+	case "":
+		mode = "title"
 	case "title", "content":
 	default:
 		return "", errors.New("mode must be title or content")
@@ -974,6 +981,9 @@ func (a *App) moveFolder(source, destination string) (string, int64, error) {
 }
 
 func (a *App) DeleteNote(id int64) error {
+	a.dataMu.Lock()
+	defer a.dataMu.Unlock()
+
 	result, err := a.db.Exec("DELETE FROM notes WHERE rowid = ?", id)
 	if err != nil {
 		return err
@@ -1165,7 +1175,49 @@ func (a *App) Handler(frontendDir string) http.Handler {
 	mux.HandleFunc("/api/graph", a.handleGraph)
 	mux.HandleFunc("/api/preview", a.handlePreview)
 	mux.Handle("/", revalidateStaticFiles(http.FileServer(http.Dir(frontendDir))))
-	return a.auth.middleware(mux)
+	return requestLogger(a.auth.middleware(mux))
+}
+
+// requestLogger records failed or slow requests plus API mutations. Static
+// assets and the high-frequency preview endpoint stay quiet on the happy path.
+func requestLogger(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(recorder, r)
+		elapsed := time.Since(start)
+		isAPIMutation := strings.HasPrefix(r.URL.Path, "/api/") &&
+			r.Method != http.MethodGet && r.URL.Path != "/api/preview"
+		if recorder.status >= http.StatusBadRequest || elapsed >= 500*time.Millisecond || isAPIMutation {
+			log.Printf("%s %s %d %dB %s", r.Method, r.URL.RequestURI(), recorder.status,
+				recorder.bytes, elapsed.Round(time.Millisecond))
+		}
+	})
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status      int
+	bytes       int
+	wroteHeader bool
+}
+
+func (r *statusRecorder) WriteHeader(status int) {
+	if r.wroteHeader {
+		return
+	}
+	r.wroteHeader = true
+	r.status = status
+	r.ResponseWriter.WriteHeader(status)
+}
+
+func (r *statusRecorder) Write(data []byte) (int, error) {
+	if !r.wroteHeader {
+		r.WriteHeader(http.StatusOK)
+	}
+	written, err := r.ResponseWriter.Write(data)
+	r.bytes += written
+	return written, err
 }
 
 // revalidateStaticFiles prevents the browser from reusing a cached frontend
@@ -1736,6 +1788,8 @@ func main() {
 		Addr:              fmt.Sprintf(":%d", portNumber),
 		Handler:           app.Handler("./web/frontend"),
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Minute,
+		WriteTimeout:      10 * time.Minute,
 		IdleTimeout:       120 * time.Second,
 	}
 	signals, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

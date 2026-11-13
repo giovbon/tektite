@@ -1,8 +1,8 @@
-# PKM Notes
+# Tektite (PKM Notes)
 
 Aplicação local de notas Markdown com backend Go, SQLite/FTS5 e interface responsiva. As pastas são caminhos virtuais armazenados no SQLite; o app não cria arquivos `.md` no disco.
 
-## Requisitoss
+## Requisitos
 
 - Go 1.21 ou superior.
 - Um compilador C disponível para o `cgo` (o driver SQLite compila o SQLite junto ao binário).
@@ -63,6 +63,10 @@ Para ARM64, compile nativamente no dispositivo ou configure um compilador C cruz
 
 O preview usa Goldmark no backend. HTML bruto é mantido inativo e destinos com esquemas inseguros em links/imagens são neutralizados.
 
+Títulos de notas não são únicos. Um wikilink por título (`[[Relatório]]`) resolve para a nota de menor ID quando houver mais de uma; para desambiguar, use o caminho virtual (`[[Pasta/Relatório]]`). Renomear uma nota reescreve apenas os links que resolviam para ela.
+
+O servidor envia cabeçalhos de segurança (`Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options` e `Referrer-Policy`), limita o corpo das requisições e registra mutações da API, falhas e requisições lentas no log.
+
 ## Dados, anexos e backup
 
 - As notas, pastas vazias e metadados ficam em `notes.db` no diretório de dados. Os caminhos das pastas associadas às notas também são mantidos nas próprias notas. O índice de busca FTS5 e o índice de vínculos (`note_links`) são mantidos no mesmo banco. O grafo e os backlinks são resolvidos a partir desse índice, sem reler o conteúdo de todas as notas a cada consulta.
@@ -79,7 +83,7 @@ Ao anexar um arquivo pelo editor, uma imagem raster compatível é inserida como
 - `GET /api/notes?limit=30&offset=0&folder=...&tag=...`
 - `POST /api/notes`
 - `GET`, `PUT` e `DELETE /api/notes/{id}` (`PUT` aceita `version`; uma versão desatualizada retorna `409` com `{ "error", "note" }`)
-- `GET /api/search?q=...&mode=title|content&limit=30&offset=0&folder=...&tag=...`
+- `GET /api/search?q=...&mode=title|content&limit=30&offset=0&folder=...&tag=...` (`mode` assume `title` quando omitido)
 - `GET /api/tags` (nome e contagem de cada tag, sem diferenciar maiúsculas)
 - `GET /api/folders`
 - `POST /api/folders` com `{ "path": "Projetos/Ideias" }`
@@ -108,7 +112,20 @@ As pastas continuam virtuais: são valores no SQLite, não diretórios físicos.
 cd backend
 go test -tags sqlite_fts5 ./...
 go vet -tags sqlite_fts5 ./...
+go test -tags sqlite_fts5 -race ./...
 go test -tags sqlite_fts5 -run '^$' -bench BenchmarkNoteGraph ./...
 cd ../web/frontend
 npm test
+npm run lint
+npx playwright install chromium   # uma vez por máquina
+npm run test:e2e
 ```
+
+Os testes E2E sobem um backend isolado em `127.0.0.1:18080` com autenticação habilitada e um diretório de dados temporário; eles não tocam nos seus dados. Use `E2E_PORT` para escolher outra porta.
+
+## Limitações conhecidas
+
+- O banco usa uma única conexão (`SetMaxOpenConns(1)`), adequada para uso pessoal. Muitos usuários simultâneos vão serializar as operações.
+- O rate limit de login é por endereço IP direto (`RemoteAddr`). Atrás de um proxy reverso, todos os clientes compartilham o IP do proxy.
+- A sessão é assinada com uma chave aleatória por processo: reiniciar o servidor exige novo login.
+- Backup manual com o servidor em execução deve usar a exportação pela interface; copiar apenas `notes.db` sem o WAL pode perder as últimas alterações.

@@ -5,23 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="">
     <title>Entrar · PKM Notes</title>
-    <script>
-        (() => {
-            let theme = 'dark';
-            try { theme = localStorage.getItem('theme') === 'light' ? 'light' : 'dark'; } catch {}
-            document.documentElement.dataset.theme = theme;
-            const syncThemeColor = () => {
-                const meta = document.querySelector('meta[name="theme-color"]');
-                const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
-                if (meta && bg) meta.content = bg;
-            };
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', syncThemeColor, { once: true });
-            } else {
-                syncThemeColor();
-            }
-        })();
-    </script>
+    <script src="/src/theme-init.js"></script>
     <link rel="preload" href="/vendor/inter/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="/styles/tokens.css">
     <link rel="stylesheet" href="/styles/base.css">
@@ -45,38 +29,6 @@
             <p id="message" role="status" aria-live="polite"></p>
         </form>
     </main>
-    <script>
-        const form = document.querySelector('#loginForm');
-        const password = document.querySelector('#password');
-        const message = document.querySelector('#message');
-        fetch('/api/auth/status')
-            .then(response => {
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                return response.json();
-            })
-            .then(status => {
-                if (!status.enabled || status.authenticated) location.replace('/');
-            })
-            .catch(error => { message.textContent = `Não foi possível verificar o acesso: ${error.message}`; });
-        form.addEventListener('submit', async event => {
-            event.preventDefault();
-            message.textContent = '';
-            form.querySelector('button').disabled = true;
-            try {
-                const response = await fetch('/api/auth/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password: password.value })
-                });
-                if (!response.ok) throw new Error((await response.text()).trim() || `HTTP ${response.status}`);
-                location.replace('/');
-            } catch (error) {
-                message.textContent = error.message;
-                password.focus();
-            } finally {
-                form.querySelector('button').disabled = false;
-            }
-        });
-    </script>
+    <script src="/src/login.js"></script>
 </body>
 </html>

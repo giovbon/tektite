@@ -19,10 +19,10 @@ Um Dockerfile multi-estágio que compila o binário Go e roda em Alpine:
 
 Configuração para rodar localmente:
 
-- **Build**: Constrói usando o Dockerfile com plataforma arm64
+- **Build**: Constrói usando o Dockerfile; a plataforma é escolhida pelo Docker/buildx (sem `platforms` fixo)
 - **Porta**: 8000 (padrão API)
 - **Dados**: Persistência via volume `./data:/app/data`
-- **Environment**: Variáveis configuráveis para autenticação e tema
+- **Environment**: `PORT`, `NOTES_DIR` e variáveis opcionais de autenticação (`AUTHENTICATION_PASSWORD`, `AUTHENTICATION_COOKIE_SECURE`); o tema é escolhido na interface e salvo no navegador
 
 ### 3. build-and-push.sh
 **Localização:** `/mnt/c/Users/Giovani/Desktop/projeto-pkm-main/build-and-push.sh`
@@ -195,10 +195,15 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 ### Testar Workflow Localmente
 
 ```bash
-# Clone com submodules (se necessário)
-# Execute testes Go e frontend
-# Execute step de build de binários multi-arquitetura
-# Execute teste de validação ELF
+cd backend
+go vet -tags "sqlite_fts5 sqlite_omit_load_extension" ./...
+go test -tags "sqlite_fts5 sqlite_omit_load_extension" -race ./...
+
+cd ../web/frontend
+npm ci
+npm test
+npm run lint
+npm run test:e2e
 ```
 
 ## Problemas Comuns
