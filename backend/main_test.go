@@ -450,6 +450,37 @@ func TestContentSearchReportsRepeatedMatches(t *testing.T) {
 	}
 }
 
+func TestNoteOccurrencesReturnsEveryMatch(t *testing.T) {
+	app, err := NewApp(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Close()
+
+	filler := strings.Repeat("contexto adicional ", 30)
+	content := filler + "Oasis voltou em 2024. " + filler + "Oásis é uma banda. " + filler + "oasis encerra a nota."
+	noteID, err := app.CreateNote(Note{Title: "Oasis", Content: content})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	snippets, occurrences, err := app.NoteOccurrences(noteID, "oasis")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if occurrences != 3 {
+		t.Fatalf("occurrences = %d, want 3", occurrences)
+	}
+	if len(snippets) != 3 {
+		t.Fatalf("snippets = %#v, want one excerpt per passage", snippets)
+	}
+	for _, snippet := range snippets {
+		if !strings.Contains(snippet, "<mark>") {
+			t.Fatalf("snippet without highlight: %q", snippet)
+		}
+	}
+}
+
 func TestFolderValidation(t *testing.T) {
 	note := Note{Title: "safe title", Folder: "../outside"}
 	if err := validateNote(&note); err == nil {

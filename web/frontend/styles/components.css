@@ -1289,6 +1289,10 @@
         max-height: calc(1.45em * 5);
     }
 
+    .note-card.is-expanded .note-preview {
+        max-height: none;
+    }
+
     .note-card.is-content-result .note-card-main {
         grid-column: 1;
         grid-row: 1;
@@ -1384,6 +1388,39 @@
         font-size: var(--text-2xs);
         font-weight: 600;
         white-space: nowrap;
+    }
+
+    .note-occurrences-toggle {
+        gap: 3px;
+        border: 1px solid transparent;
+        font-family: inherit;
+        line-height: 1.4;
+        cursor: pointer;
+        transition: var(--transition-colors);
+    }
+
+    .note-occurrences-toggle:hover {
+        border-color: var(--accent);
+    }
+
+    .note-occurrences-toggle:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+    }
+
+    .note-occurrences-toggle svg {
+        width: 11px;
+        height: 11px;
+        fill: none;
+        stroke: currentColor;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 2;
+        transition: transform var(--duration-fast) var(--ease-standard);
+    }
+
+    .note-occurrences-toggle[aria-expanded="true"] svg {
+        transform: rotate(180deg);
     }
 
     .note-actions {

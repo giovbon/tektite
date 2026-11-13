@@ -515,10 +515,32 @@ func (a *App) SearchNotes(query, mode, folder, tag string, limit, offset int) (P
 	return Page{Items: items, Total: total, Limit: limit, Offset: offset}, nil
 }
 
+// NoteOccurrences returns every excerpt where the query matches the content of
+// a single note. The search result card only carries a couple of snippets, so
+// expanding a result asks for the complete list on demand.
+func (a *App) NoteOccurrences(id int64, query string) ([]string, int, error) {
+	match, err := makeFTSQuery(query, "content")
+	if err != nil {
+		return nil, 0, err
+	}
+	var marked string
+	err = a.db.QueryRow(`SELECT highlight(notes_fts, 1, char(30), char(31))
+		FROM notes_fts WHERE rowid = ? AND notes_fts MATCH ?`, id, match).Scan(&marked)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, 0, nil
+	}
+	if err != nil {
+		return nil, 0, err
+	}
+	occurrences := strings.Count(marked, string(contentMatchStart))
+	return buildContentSnippets(marked, maxOccurrenceSnippets), occurrences, nil
+}
+
 const (
 	contentMatchStart       = '\x1e'
 	contentMatchEnd         = '\x1f'
 	maxContentSnippets      = 2
+	maxOccurrenceSnippets   = 100
 	maxContentSnippetLength = 480
 	snippetContextBefore    = 110
 	snippetContextAfter     = 190
@@ -533,7 +555,7 @@ func scanContentSummaries(rows *sql.Rows) ([]NoteSummary, error) {
 			return nil, err
 		}
 		item.Tags = splitTags(tags)
-		item.Snippets = buildContentSnippets(marked)
+		item.Snippets = buildContentSnippets(marked, maxContentSnippets)
 		item.Occurrences = strings.Count(marked, string(contentMatchStart))
 		if len(item.Snippets) > 0 {
 			item.Preview = item.Snippets[0]
@@ -544,8 +566,11 @@ func scanContentSummaries(rows *sql.Rows) ([]NoteSummary, error) {
 }
 
 // buildContentSnippets turns the fully highlighted note content produced by
-// FTS5 highlight() into a few short excerpts around the matches.
-func buildContentSnippets(marked string) []string {
+// FTS5 highlight() into short excerpts around the matches.
+func buildContentSnippets(marked string, limit int) []string {
+	if limit < 1 {
+		return nil
+	}
 	type matchSpan struct{ start, end int }
 	spans := make([]matchSpan, 0)
 	for index := 0; index < len(marked); index++ {
@@ -568,7 +593,7 @@ func buildContentSnippets(marked string) []string {
 		start, end  int
 		first, last int
 	}
-	groups := make([]snippetGroup, 0, maxContentSnippets)
+	groups := make([]snippetGroup, 0, limit)
 	for _, span := range spans {
 		start := max(0, span.start-snippetContextBefore)
 		end := min(len(marked), span.end+snippetContextAfter)
@@ -582,8 +607,8 @@ func buildContentSnippets(marked string) []string {
 		groups = append(groups, snippetGroup{start: start, end: end, first: span.start, last: span.end})
 	}
 
-	if len(groups) > maxContentSnippets {
-		groups = groups[:maxContentSnippets]
+	if len(groups) > limit {
+		groups = groups[:limit]
 	}
 	snippets := make([]string, 0, len(groups))
 	for _, group := range groups {
@@ -1234,6 +1259,10 @@ func (a *App) handleNote(w http.ResponseWriter, r *http.Request) {
 		a.handleBacklinks(w, r, id)
 		return
 	}
+	if len(parts) == 2 && parts[1] == "occurrences" {
+		a.handleNoteOccurrences(w, r, id)
+		return
+	}
 	if len(parts) >= 2 && parts[1] == "attachments" {
 		if len(parts) == 2 {
 			a.handleAttachments(w, r, id)
@@ -1313,6 +1342,27 @@ func (a *App) handleNote(w http.ResponseWriter, r *http.Request) {
 	default:
 		methodNotAllowed(w)
 	}
+}
+
+func (a *App) handleNoteOccurrences(w http.ResponseWriter, r *http.Request, id int64) {
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w)
+		return
+	}
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if query == "" {
+		http.Error(w, "missing search query", http.StatusBadRequest)
+		return
+	}
+	snippets, occurrences, err := a.NoteOccurrences(id, query)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"snippets":    snippets,
+		"occurrences": occurrences,
+	})
 }
 
 func (a *App) handleSearch(w http.ResponseWriter, r *http.Request) {

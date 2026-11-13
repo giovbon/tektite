@@ -696,11 +696,16 @@
     /* Em modo de coluna única o painel fica centralizado, então o
        espaçamento precisa ser simétrico para o texto não deslocar. */
     .editor-workspace[data-editor-mode="preview"] .preview-pane {
-        padding-right: 16px;
+        padding: 0;
     }
 
+    /* Em Leitura a rolagem fica no elemento de largura total para a barra
+       encostar na borda direita da página; o texto continua centralizado. */
     .editor-workspace[data-editor-mode="preview"] .markdown-preview {
-        padding-right: 16px;
+        width: 100%;
+        max-width: none;
+        align-self: stretch;
+        padding: 12px max(12px, calc((100% - 42rem) / 2));
     }
 
     .markdown-preview::-webkit-scrollbar {

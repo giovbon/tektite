@@ -451,7 +451,7 @@ function setupEventListeners() {
         const button = event.target.closest('[data-format]');
         if (button) markdownEditor.format(button.dataset.format);
     });
-    document.querySelectorAll('[data-editor-mode]').forEach(button => {
+    document.querySelectorAll('.editor-mode[data-editor-mode]').forEach(button => {
         button.addEventListener('click', () => setEditorMode(button.dataset.editorMode));
     });
     window.addEventListener('popstate', event => void handlePopState(event));
@@ -706,7 +706,7 @@ function renderNotes(page) {
         }));
     } else {
         const contentSearch = Boolean(query && state.mode === 'content');
-        for (const note of page.items) elements.notesList.append(createNoteCard(note, contentSearch));
+        for (const note of page.items) elements.notesList.append(createNoteCard(note, contentSearch, query));
     }
     renderTagFilter();
     const first = page.total === 0 ? 0 : page.offset + 1;
@@ -805,10 +805,11 @@ function skeletonLines(count) {
 }
 
 
-function createNoteCard(note, contentSearch) {
+function createNoteCard(note, contentSearch, query = '') {
     const card = document.createElement('article');
     card.className = `note-card card${contentSearch ? ' is-content-result' : ''}`;
     card.dataset.noteId = String(note.id);
+    if (contentSearch) card.dataset.searchQuery = query;
     const main = document.createElement('button');
     main.className = 'note-card-main';
     main.type = 'button';
@@ -857,10 +858,14 @@ function createNoteCard(note, contentSearch) {
         info.append(folder);
     }
     if (contentSearch && note.occurrences > 1) {
-        const occurrences = document.createElement('span');
-        occurrences.className = 'note-hit-count';
-        occurrences.textContent = `${note.occurrences} ocorrências`;
-        occurrences.title = `O termo pesquisado aparece ${note.occurrences} vezes nesta nota`;
+        const occurrences = document.createElement('button');
+        occurrences.type = 'button';
+        occurrences.className = 'note-hit-count note-occurrences-toggle';
+        occurrences.dataset.action = 'occurrences';
+        occurrences.dataset.count = String(note.occurrences);
+        occurrences.setAttribute('aria-expanded', 'false');
+        occurrences.title = `Ver todas as ${note.occurrences} ocorrências nesta nota`;
+        occurrences.innerHTML = `<span>${note.occurrences} ocorrências</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>`;
         info.append(occurrences);
     }
     const actions = document.createElement('div');
@@ -914,8 +919,46 @@ function handleNoteListClick(event) {
     if (!card || !action) return;
     const id = Number(card.dataset.noteId);
     if (action.dataset.action === 'open') void openNote(id);
+    else if (action.dataset.action === 'occurrences') void toggleNoteOccurrences(card, action);
     else if (action.dataset.action === 'tag') void selectTag(action.dataset.tag || '');
     else if (action.dataset.action === 'delete') void deleteNote(id);
+}
+
+async function toggleNoteOccurrences(card, toggle) {
+    const expanded = card.classList.toggle('is-expanded');
+    toggle.setAttribute('aria-expanded', String(expanded));
+    const count = toggle.dataset.count || '';
+    toggle.title = expanded ? 'Recolher ocorrências' : `Ver todas as ${count} ocorrências nesta nota`;
+    if (!expanded || card.dataset.occurrencesLoaded === 'true') return;
+    const query = card.dataset.searchQuery || elements.searchInput.value.trim();
+    if (!query) return;
+    card.dataset.occurrencesLoading = 'true';
+    toggle.setAttribute('aria-busy', 'true');
+    try {
+        const id = Number(card.dataset.noteId);
+        const params = new URLSearchParams({ q: query });
+        const payload = await requestJSON(`/api/notes/${id}/occurrences?${params}`);
+        const snippets = Array.isArray(payload.snippets) ? payload.snippets : [];
+        const preview = card.querySelector('.note-preview');
+        if (preview && snippets.length) {
+            preview.replaceChildren();
+            for (const value of snippets) {
+                const snippet = document.createElement('span');
+                snippet.className = 'note-preview-snippet';
+                appendHighlightedPreview(snippet, value);
+                preview.append(snippet);
+            }
+        }
+        card.dataset.occurrencesLoaded = 'true';
+    } catch (error) {
+        card.classList.remove('is-expanded');
+        toggle.setAttribute('aria-expanded', 'false');
+        toggle.title = `Ver todas as ${count} ocorrências nesta nota`;
+        showMessage(`Não foi possível carregar as ocorrências: ${error.message}`, 'error');
+    } finally {
+        delete card.dataset.occurrencesLoading;
+        toggle.removeAttribute('aria-busy');
+    }
 }
 
 async function handleEmptyAction(action) {
@@ -2197,9 +2240,10 @@ function updateEditorHistoryButtons({ canUndo, canRedo }) {
 
 function setEditorMode(mode) {
     if (mode === 'split' && window.matchMedia('(max-width: 700px)').matches) mode = 'edit';
+    if (elements.editorWorkspace.dataset.editorMode === mode) return;
     elements.editorWorkspace.dataset.editorMode = mode;
     localStorage.setItem('editorMode', mode);
-    document.querySelectorAll('[data-editor-mode]').forEach(button => {
+    document.querySelectorAll('.editor-mode[data-editor-mode]').forEach(button => {
         const active = button.dataset.editorMode === mode;
         button.classList.toggle('is-active', active);
         button.setAttribute('aria-pressed', String(active));
