@@ -1044,6 +1044,25 @@
         color: var(--accent);
     }
 
+    .md-task-marker {
+        border-radius: 3px;
+        padding: 0 2px;
+        color: var(--syntax-strong);
+        background: color-mix(in srgb, var(--syntax-strong) 14%, transparent);
+        font-weight: 700;
+    }
+
+    .md-task-marker[data-marker="FIXME"],
+    .md-task-marker[data-marker="BUG"] {
+        color: var(--danger);
+        background: var(--danger-soft);
+    }
+
+    .md-task-marker[data-marker="NOTE"] {
+        color: var(--success);
+        background: var(--success-soft);
+    }
+
     .hljs-keyword,
     .hljs-selector-tag,
     .hljs-literal {

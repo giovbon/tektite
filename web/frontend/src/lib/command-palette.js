@@ -3,6 +3,7 @@ const ICONS = {
     note: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 2.5h8l4.5 4.5v15H5z"/><path d="M13 2.5V7h4.5M8 11h7m-7 3.5h7m-7 3.5h5"/></svg>',
     plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
     graph: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.2"/><circle cx="18" cy="7" r="2.2"/><circle cx="10" cy="18" r="2.2"/><path d="m8 6.3 7.8.4M7.3 8l2 7.8m7.2-6.7-5 7"/></svg>',
+    tasks: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="m7.5 9.2 1.5 1.5 3-3"/><path d="m7.5 15.2 1.5 1.5 3-3"/><path d="M14 9.5h3M14 15.5h3"/></svg>',
     theme: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg>',
     download: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v3h16v-3"/></svg>',
     upload: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3m0 0 4 4m-4-4L8 7M4 17v3h16v-3"/></svg>',

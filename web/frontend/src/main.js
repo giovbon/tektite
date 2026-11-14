@@ -1,6 +1,6 @@
 import { requestJSON } from './lib/api-client.js';
 import { CommandPalette } from './lib/command-palette.js';
-import { ensureFrontmatterTags, extractMarkdownOutline, frontmatterLineOffset, highlightMarkdown, MarkdownEditor, parseFrontmatter, stripFrontmatter } from './lib/markdown-editor.js';
+import { ensureFrontmatterTags, extractMarkdownOutline, frontmatterLineOffset, highlightMarkdown, MarkdownEditor, parseFrontmatter, stripFrontmatter, DEFAULT_TASK_MARKERS } from './lib/markdown-editor.js';
 import { GraphView } from './lib/graph-view.js';
 import { findLinkOccurrence, linkTargetMatches, normalizeLinkPath } from './lib/note-links.js';
 import { highlightCode } from './lib/syntax-highlight.js';
@@ -31,6 +31,12 @@ const state = {
     outline: [],
     pendingOutlineLine: null,
     pendingBacklink: null,
+    pendingTaskLine: null,
+    tasks: null,
+    tasksError: '',
+    tasksLoading: false,
+    tasksRequestID: 0,
+    taskMarkers: [...DEFAULT_TASK_MARKERS],
     noteID: null,
     noteFolder: '',
     noteVersion: null,
@@ -90,6 +96,7 @@ const elements = {
     panelContent: document.querySelector('#panelContent'),
     backlinksCount: document.querySelector('#backlinksCount'),
     outlineCount: document.querySelector('#outlineCount'),
+    tasksCount: document.querySelector('#tasksCount'),
     currentFolder: document.querySelector('#currentFolder'),
     noteTitle: document.querySelector('#noteTitle'),
     noteContent: document.querySelector('#noteContent'),
@@ -110,7 +117,7 @@ const elements = {
 };
 
 function syncMarkdownHighlight() {
-    elements.noteContentHighlight.innerHTML = `${highlightMarkdown(elements.noteContent.value)}\n`;
+    elements.noteContentHighlight.innerHTML = `${highlightMarkdown(elements.noteContent.value, state.taskMarkers)}\n`;
     elements.noteContentHighlight.scrollTop = elements.noteContent.scrollTop;
     elements.noteContentHighlight.scrollLeft = elements.noteContent.scrollLeft;
 }
@@ -246,6 +253,7 @@ async function initialize() {
     loadFolders();
     loadTags();
     void loadFolderNotes('', false);
+    void loadTaskMarkersSetting().finally(() => void loadTasks());
 }
 
 function setupEventListeners() {
@@ -698,6 +706,17 @@ function tablePropertyField(key) {
 function invalidateTable() {
     state.tableLoaded = false;
     state.tableKey = '';
+}
+
+// Keeps the cached table data in sync after an attachment is deleted and
+// invalidates the cache, so returning to the table view reloads it instead of
+// showing stale attachment rows.
+function removeAttachmentFromTable(noteID, attachmentID) {
+    for (const note of state.tableData) {
+        if (note.id !== noteID || !Array.isArray(note.attachments)) continue;
+        note.attachments = note.attachments.filter(attachment => attachment.id !== attachmentID);
+    }
+    invalidateTable();
 }
 
 function normalizeTableSearch(value) {
@@ -1931,7 +1950,7 @@ function createAutomaticNoteTitle(date = new Date()) {
     return `${day} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-async function openNote(id, { push = true, backlinkTarget = null, heading = '' } = {}) {
+async function openNote(id, { push = true, backlinkTarget = null, heading = '', line = null } = {}) {
     if (state.view === 'editor' && !(await flushSave())) return;
     const navigationID = ++state.navigationID;
     let listState = state.view === 'editor' ? state.listState : captureListState();
@@ -1945,8 +1964,10 @@ async function openNote(id, { push = true, backlinkTarget = null, heading = '' }
         }
         showEditor(note);
         state.pendingBacklink = backlinkTarget;
+        state.pendingTaskLine = Number.isFinite(line) && line > 0 ? line - 1 : null;
         if (backlinkTarget) updatePreview();
         if (heading) scrollToLinkedHeading(heading);
+        runPendingTaskLine();
     } catch (error) {
         showMessage(`Não foi possível abrir a nota: ${error.message}`, 'error');
     }
@@ -1979,6 +2000,7 @@ function showEditor(note) {
     resetBacklinks();
     state.pendingBacklink = null;
     state.pendingOutlineLine = null;
+    state.pendingTaskLine = null;
     elements.saveStatus.className = 'save-status';
     elements.saveStatus.textContent = note ? 'Salvo' : 'Rascunho';
     const content = note ? ensureFrontmatterTags(note.content, note.tags || []) : '';
@@ -2135,6 +2157,7 @@ async function persistDraft() {
             state.folderNotes.clear();
             void Promise.all([loadFolders(), loadNotes(), loadTags()]);
             void loadFolderNotes('', false);
+            void loadTasks();
             return true;
         } catch (error) {
             setSaveStatus(`Falha ao salvar: ${error.message}`, 'error');
@@ -2253,6 +2276,7 @@ async function uploadAttachments(files) {
             const attachment = await response.json();
             if (state.noteID === noteID) {
                 insertAttachmentMarkdown(attachment);
+                invalidateTable();
                 await loadAttachments(noteID);
             }
         } catch (error) {
@@ -2291,6 +2315,7 @@ async function deleteAttachment(attachmentID) {
     if (!window.confirm(`Excluir ${filename}? Essa ação não pode ser desfeita.`)) return;
     try {
         await requestJSON(`/api/notes/${noteID}/attachments/${attachmentID}`, { method: 'DELETE' });
+        removeAttachmentFromTable(noteID, attachmentID);
         await loadAttachments(noteID);
         showMessage('Anexo excluído.', 'success');
     } catch (error) {
@@ -2448,6 +2473,7 @@ async function deleteNote(id) {
         showMessage('Nota excluída.', 'success');
         state.folderNotesGeneration++;
         state.folderNotes.clear();
+        void loadTasks();
         if (deletingCurrent) {
             state.savedDraft = getDraft();
             state.noteID = null;
@@ -2484,6 +2510,7 @@ function updatePreview() {
         syncPreviewMinimumHeight();
         syncEditorScrollFromSource();
         runPendingBacklink();
+        runPendingTaskLine();
         return;
     }
     previewTimer = window.setTimeout(async () => {
@@ -2516,6 +2543,7 @@ function updatePreview() {
                     requestAnimationFrame(() => scrollToOutlineHeading(pendingLine));
                 }
                 runPendingBacklink();
+                runPendingTaskLine();
             }
         } catch (error) {
             if (requestID === previewRequestID) {
@@ -2914,6 +2942,10 @@ function togglePanel(name) {
     } else if (name === 'outline') {
         elements.panelTitle.textContent = 'Sumário';
         renderOutlinePanel();
+    } else if (name === 'tasks') {
+        elements.panelTitle.textContent = 'Tarefas';
+        renderTasksPanel();
+        void loadTasks();
     } else if (name === 'settings') {
         renderSettingsPanel();
     } else {
@@ -2927,6 +2959,61 @@ function renderSettingsPanel() {
 
     const container = document.createElement('div');
     container.className = 'settings-panel';
+
+    const tasksSection = document.createElement('section');
+    tasksSection.className = 'settings-section';
+
+    const tasksHeading = document.createElement('h3');
+    tasksHeading.textContent = 'Tarefas';
+
+    const tasksDescription = document.createElement('p');
+    tasksDescription.className = 'settings-description';
+    tasksDescription.textContent = 'Palavras que identificam tarefas no texto, como TODO: e FIXME:. Separe por vírgula. A lista fica salva no servidor e vale para todos os navegadores.';
+
+    const markersLabel = document.createElement('label');
+    markersLabel.className = 'sr-only';
+    markersLabel.htmlFor = 'taskMarkersInput';
+    markersLabel.textContent = 'Marcadores de tarefa';
+
+    const markersInput = document.createElement('input');
+    markersInput.type = 'text';
+    markersInput.id = 'taskMarkersInput';
+    markersInput.className = 'settings-input';
+    markersInput.autocomplete = 'off';
+    markersInput.spellcheck = false;
+    markersInput.value = state.taskMarkers.join(', ');
+    markersInput.placeholder = DEFAULT_TASK_MARKERS.join(', ');
+
+    const tasksActions = document.createElement('div');
+    tasksActions.className = 'settings-actions';
+
+    const saveMarkers = document.createElement('button');
+    saveMarkers.type = 'button';
+    saveMarkers.id = 'saveTaskMarkers';
+    saveMarkers.className = 'button';
+    saveMarkers.dataset.variant = 'muted';
+    saveMarkers.textContent = 'Salvar marcadores';
+    saveMarkers.addEventListener('click', () => void saveTaskMarkers(markersInput, saveMarkers));
+    markersInput.addEventListener('keydown', event => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            saveMarkers.click();
+        }
+    });
+
+    const resetMarkers = document.createElement('button');
+    resetMarkers.type = 'button';
+    resetMarkers.className = 'button';
+    resetMarkers.dataset.variant = 'ghost';
+    resetMarkers.textContent = 'Restaurar padrão';
+    resetMarkers.addEventListener('click', () => {
+        markersInput.value = DEFAULT_TASK_MARKERS.join(', ');
+        markersInput.removeAttribute('aria-invalid');
+        void saveTaskMarkers(markersInput, saveMarkers);
+    });
+
+    tasksActions.append(saveMarkers, resetMarkers);
+    tasksSection.append(tasksHeading, tasksDescription, markersLabel, markersInput, tasksActions);
 
     const section = document.createElement('section');
     section.className = 'settings-section';
@@ -2959,7 +3046,7 @@ function renderSettingsPanel() {
 
     actions.append(exportButton, importButton);
     section.append(heading, description, actions);
-    container.append(section);
+    container.append(tasksSection, section);
     elements.panelContent.replaceChildren(container);
 }
 
@@ -3171,6 +3258,291 @@ function renderOutlinePanel() {
         item.title = heading.text;
         elements.panelContent.append(item);
     }
+}
+
+function parseTaskMarkers(value) {
+    const markers = [];
+    const seen = new Set();
+    for (const raw of String(value ?? '').split(/[\s,;]+/)) {
+        const marker = raw.replace(/:+$/, '').trim().toUpperCase();
+        if (!marker) continue;
+        if (!/^[A-Z][A-Z0-9_-]{0,31}$/.test(marker)) {
+            return { error: `Marcador de tarefa inválido: “${raw}”.` };
+        }
+        if (seen.has(marker)) continue;
+        seen.add(marker);
+        markers.push(marker);
+    }
+    if (markers.length > 20) return { error: 'Use no máximo 20 marcadores de tarefa.' };
+    return { markers: markers.length ? markers : [...DEFAULT_TASK_MARKERS] };
+}
+
+async function loadTaskMarkersSetting() {
+    let fallback = null;
+    const stored = localStorage.getItem('taskMarkers');
+    if (stored) {
+        const parsed = parseTaskMarkers(stored);
+        if (!parsed.error) fallback = parsed.markers;
+    }
+    try {
+        const data = await requestJSON('/api/task-markers');
+        if (!Array.isArray(data?.markers)) throw new Error('resposta de marcadores inválida');
+        const parsed = parseTaskMarkers(data.markers.join(','));
+        if (parsed.error) throw new Error(parsed.error);
+        state.taskMarkers = parsed.markers;
+        localStorage.setItem('taskMarkers', state.taskMarkers.join(','));
+    } catch (error) {
+        if (fallback) state.taskMarkers = fallback;
+    }
+    syncMarkdownHighlight();
+}
+
+async function saveTaskMarkers(input, button) {
+    const parsed = parseTaskMarkers(input.value);
+    if (parsed.error) {
+        input.setAttribute('aria-invalid', 'true');
+        showMessage(parsed.error, 'error');
+        input.focus();
+        return;
+    }
+    input.removeAttribute('aria-invalid');
+    button.disabled = true;
+    try {
+        const data = await requestJSON('/api/task-markers', {
+            method: 'PUT',
+            body: JSON.stringify({ markers: parsed.markers })
+        });
+        if (!Array.isArray(data?.markers)) throw new Error('resposta de marcadores inválida');
+        const saved = parseTaskMarkers(data.markers.join(','));
+        if (saved.error) throw new Error(saved.error);
+        state.taskMarkers = saved.markers;
+        input.value = state.taskMarkers.join(', ');
+        localStorage.setItem('taskMarkers', state.taskMarkers.join(','));
+        syncMarkdownHighlight();
+        await loadTasks();
+        showMessage('Marcadores de tarefa atualizados.', 'success');
+    } catch (error) {
+        showMessage(`Não foi possível salvar os marcadores: ${error.message}`, 'error');
+    } finally {
+        button.disabled = false;
+    }
+}
+
+function updateTasksCount() {
+    const count = state.tasks?.total || 0;
+    elements.tasksCount.textContent = count > 9 ? '9+' : String(count);
+    elements.tasksCount.hidden = count === 0;
+    const label = count ? `Tarefas (${count})` : 'Abrir tarefas';
+    document.querySelector('#tasksButton').title = label;
+    document.querySelector('#tasksButton').setAttribute('aria-label', label);
+}
+
+async function loadTasks() {
+    const requestID = ++state.tasksRequestID;
+    state.tasksLoading = true;
+    state.tasksError = '';
+    if (elements.panel.dataset.panel === 'tasks') renderTasksPanel();
+    try {
+        const params = new URLSearchParams({ markers: state.taskMarkers.join(',') });
+        const data = await requestJSON(`/api/tasks?${params.toString()}`);
+        if (requestID !== state.tasksRequestID) return;
+        if (!Array.isArray(data?.items)) throw new Error('resposta de tarefas inválida');
+        state.tasks = data;
+    } catch (error) {
+        if (requestID !== state.tasksRequestID) return;
+        state.tasksError = error.message;
+    } finally {
+        if (requestID === state.tasksRequestID) {
+            state.tasksLoading = false;
+            updateTasksCount();
+            if (elements.panel.dataset.panel === 'tasks') renderTasksPanel();
+        }
+    }
+}
+
+function renderTasksPanel() {
+    elements.panelContent.replaceChildren();
+    if (state.tasksLoading && !state.tasks) {
+        const loading = document.createElement('div');
+        loading.className = 'tasks-panel-empty';
+        loading.setAttribute('aria-label', 'Carregando tarefas');
+        loading.append(...skeletonLines(3));
+        elements.panelContent.append(loading);
+        return;
+    }
+    if (state.tasksError && !state.tasks) {
+        const error = document.createElement('div');
+        error.className = 'tasks-panel-empty';
+        const message = document.createElement('p');
+        message.textContent = 'Não foi possível carregar as tarefas.';
+        const detail = document.createElement('small');
+        detail.textContent = state.tasksError;
+        error.append(message, detail);
+        elements.panelContent.append(error);
+        return;
+    }
+    if (!state.tasks || state.tasks.total === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'tasks-panel-empty';
+        const message = document.createElement('p');
+        message.textContent = 'Nenhuma tarefa encontrada.';
+        empty.append(message);
+        const hint = document.createElement('small');
+        hint.textContent = `Marcadores ativos: ${state.taskMarkers.join(', ')}. Use, por exemplo, “TODO: revisar”.`;
+        empty.append(hint);
+        elements.panelContent.append(empty);
+        return;
+    }
+
+    const groups = new Map();
+    for (const task of state.tasks.items) {
+        if (!groups.has(task.note_id)) groups.set(task.note_id, []);
+        groups.get(task.note_id).push(task);
+    }
+
+    const summary = document.createElement('p');
+    summary.className = 'tasks-summary';
+    const noteCount = groups.size;
+    summary.textContent = `${state.tasks.total} ${state.tasks.total === 1 ? 'tarefa' : 'tarefas'} em ` +
+        `${noteCount} ${noteCount === 1 ? 'nota' : 'notas'}`;
+    elements.panelContent.append(summary);
+
+    if (state.tasksError) {
+        const warning = document.createElement('p');
+        warning.className = 'tasks-warning';
+        warning.textContent = 'A lista pode estar desatualizada.';
+        elements.panelContent.append(warning);
+    }
+
+    for (const tasks of groups.values()) {
+        const note = tasks[0];
+        const group = document.createElement('section');
+        group.className = 'task-group';
+
+        const header = document.createElement('div');
+        header.className = 'task-group-header';
+        const title = document.createElement('span');
+        title.className = 'task-group-title';
+        title.textContent = note.note_title;
+        title.title = note.folder ? `${note.folder}/${note.note_title}` : note.note_title;
+        header.append(title);
+        if (note.folder) {
+            const folder = document.createElement('span');
+            folder.className = 'task-group-folder';
+            folder.textContent = note.folder;
+            header.append(folder);
+        }
+        group.append(header);
+
+        const list = document.createElement('div');
+        list.className = 'task-items';
+        for (const task of tasks) {
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'task-item';
+            item.dataset.taskNote = String(task.note_id);
+            item.dataset.taskLine = String(task.line);
+            item.dataset.taskFolder = task.folder || '';
+            item.title = `${note.folder ? `${note.folder}/` : ''}${note.note_title} · linha ${task.line}`;
+
+            const marker = document.createElement('span');
+            marker.className = 'task-marker';
+            marker.dataset.marker = task.marker;
+            marker.textContent = task.marker;
+
+            const text = document.createElement('span');
+            text.className = 'task-text';
+            text.textContent = task.text || 'Sem descrição';
+            if (!task.text) text.classList.add('is-empty');
+
+            const line = document.createElement('span');
+            line.className = 'task-line';
+            line.textContent = `L${task.line}`;
+
+            item.append(marker, text, line);
+            list.append(item);
+        }
+        group.append(list);
+        elements.panelContent.append(group);
+    }
+}
+
+function scrollPreviewToSourceLine(lineIndex) {
+    const bodyLine = Math.max(0, lineIndex - frontmatterLineOffset(elements.noteContent.value));
+    const blocks = [...elements.markdownPreview.querySelectorAll('[data-source-line]')];
+    let target = null;
+    for (const block of blocks) {
+        const sourceLine = Number(block.dataset.sourceLine);
+        if (!Number.isFinite(sourceLine)) continue;
+        if (sourceLine > bodyLine) break;
+        target = block;
+    }
+    if (!target) return false;
+    scrollPreviewToElement(target, { flash: true });
+    return true;
+}
+
+function previewSourceReady() {
+    return renderedPreviewMarkdown === stripFrontmatter(elements.noteContent.value);
+}
+
+function jumpToSourceLine(lineIndex) {
+    const line = Number(lineIndex);
+    if (!Number.isFinite(line) || line < 0) return;
+    const mode = elements.editorWorkspace.dataset.editorMode;
+    if (mode === 'edit') {
+        scrollEditorToLine(line);
+        return;
+    }
+    if (!previewSourceReady()) {
+        // Keep the target until the asynchronous preview rendering finishes.
+        state.pendingTaskLine = line;
+        updatePreview();
+        return;
+    }
+    if (mode === 'split') scrollEditorToLine(line);
+    scrollPreviewToSourceLine(line);
+}
+
+function runPendingTaskLine() {
+    if (state.pendingTaskLine === null) return;
+    const mode = elements.editorWorkspace.dataset.editorMode;
+    if (mode !== 'edit' && !previewSourceReady()) return;
+    const line = state.pendingTaskLine;
+    state.pendingTaskLine = null;
+    jumpToSourceLine(line);
+}
+
+function revealNoteFolder(folder) {
+    const target = folder || '';
+    state.folder = target;
+    if (target) {
+        const parts = target.split('/');
+        for (let index = 1; index <= parts.length; index++) {
+            state.expandedFolders.add(parts.slice(0, index).join('/'));
+        }
+    }
+    if (state.listState) state.listState = { ...state.listState, folder: target, offset: 0 };
+    if (elements.panel.dataset.panel !== 'files' || !document.body.classList.contains('panel-open')) {
+        togglePanel('files');
+    } else {
+        renderFolderPanel();
+    }
+    requestAnimationFrame(() => {
+        elements.panelContent.querySelector('.tree-folder.is-selected, .tree-root.is-selected')
+            ?.scrollIntoView({ block: 'nearest' });
+    });
+}
+
+function openTask(noteID, line, folder = '') {
+    revealNoteFolder(folder);
+    if (window.matchMedia('(max-width: 700px)').matches) closePanel();
+    if (state.view === 'editor' && state.noteID === noteID) {
+        jumpToSourceLine(line - 1);
+        elements.noteContent.focus();
+        return;
+    }
+    void openNote(noteID, { line });
 }
 
 function suspendScrollSync(duration = 350) {
@@ -3536,6 +3908,15 @@ function handlePanelClick(event) {
         scrollToOutlineHeading(outlineItem.dataset.outlineLine);
         return;
     }
+    const taskItem = event.target.closest('[data-task-note]');
+    if (taskItem) {
+        openTask(
+            Number(taskItem.dataset.taskNote),
+            Number(taskItem.dataset.taskLine),
+            taskItem.dataset.taskFolder || ''
+        );
+        return;
+    }
     const backlink = event.target.closest('[data-backlink-note]');
     if (backlink) {
         const target = state.noteID === null
@@ -3892,6 +4273,17 @@ function buildCommandItems(query) {
             icon: 'graph',
             keywords: 'relações conexões',
             run: () => openGraphView()
+        },
+        {
+            title: 'Abrir tarefas',
+            subtitle: 'Ver marcações TODO, FIXME e outras nas notas',
+            icon: 'tasks',
+            keywords: 'todo fixme tarefas pendências',
+            run: () => {
+                if (elements.panel.dataset.panel !== 'tasks' || !document.body.classList.contains('panel-open')) {
+                    togglePanel('tasks');
+                }
+            }
         },
         {
             title: 'Todas as notas',

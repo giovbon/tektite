@@ -1233,9 +1233,9 @@ func TestMigrationBackfillsPersistedLinksIdempotently(t *testing.T) {
 			app.Close()
 			t.Fatal(err)
 		}
-		if version != 5 {
+		if version != 6 {
 			app.Close()
-			t.Fatalf("schema version = %d, want 5", version)
+			t.Fatalf("schema version = %d, want 6", version)
 		}
 		if err := app.Close(); err != nil {
 			t.Fatal(err)

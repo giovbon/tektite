@@ -717,3 +717,29 @@ func TestMarkdownPreviewRendersGFMExtensions(t *testing.T) {
 		}
 	}
 }
+
+func TestMarkdownPreviewAnnotatesTaskSourceLines(t *testing.T) {
+	app, err := NewApp(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Close()
+	source := "primeira linha\n\nTODO: revisar a proposta\n\n- FIXME: corrigir o cálculo\n"
+	request := httptest.NewRequest(http.MethodPost, "/api/preview", strings.NewReader(source))
+	response := httptest.NewRecorder()
+	app.handlePreview(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("preview status = %d, body = %s", response.Code, response.Body.String())
+	}
+	rendered := response.Body.String()
+	for _, expected := range []string{
+		`<p data-source-line="0">primeira linha</p>`,
+		`<p data-source-line="2">TODO: revisar a proposta</p>`,
+		`<li data-source-line="4"`,
+	} {
+		if !strings.Contains(rendered, expected) {
+			t.Fatalf("preview source line annotation is missing %q: %s", expected, rendered)
+		}
+	}
+}

@@ -322,7 +322,28 @@ function escapeHTML(source) {
     return source.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
 
-function highlightMarkdownLine(source) {
+export const DEFAULT_TASK_MARKERS = ['TODO', 'FIXME', 'HACK', 'XXX', 'BUG', 'NOTE'];
+
+function escapeRegExp(source) {
+    return source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function highlightTaskMarkers(html, markers) {
+    const words = (markers || DEFAULT_TASK_MARKERS).filter(Boolean);
+    if (!words.length) return html;
+    const pattern = new RegExp(
+        `(^|[^\\p{L}\\p{N}_])(${words.map(escapeRegExp).join('|')})(?![\\p{L}\\p{N}_])`,
+        'giu'
+    );
+    return html.split(/(<[^>]+>)/).map(part => {
+        if (part.startsWith('<')) return part;
+        return part.replace(pattern, (match, prefix, word) =>
+            `${prefix}<span class="md-task-marker" data-marker="${escapeHTML(word.toUpperCase())}">${word}</span>`
+        );
+    }).join('');
+}
+
+function highlightMarkdownLine(source, markers) {
     const inlineTokens = /(!?\[\[[^\]\n]+\]\]|`[^`\n]+`|\*\*[^*\n]+\*\*|__[^_\n]+__|\*[^*\n]+\*|_[^_\n]+_|\[[^\]\n]+\]\([^)]+\))/g;
     let result = '';
     let previousEnd = 0;
@@ -346,17 +367,17 @@ function highlightMarkdownLine(source) {
     if (/^\s{0,3}#{1,6}\s/.test(source)) result = `<span class="md-heading">${result}</span>`;
     else if (/^\s{0,3}(?:[-+*]|\d+[.)])\s/.test(source)) result = result.replace(/^(\s*(?:[-+*]|\d+[.)])\s+)/, '<span class="md-list">$1</span>');
     else if (/^\s{0,3}>\s?/.test(source)) result = result.replace(/^(\s*&gt;\s?)/, '<span class="md-quote">$1</span>');
-    return result;
+    return highlightTaskMarkers(result, markers);
 }
 
-export function highlightMarkdown(source) {
+export function highlightMarkdown(source, markers = DEFAULT_TASK_MARKERS) {
     const lines = source.split('\n');
     const highlighted = [];
     for (let index = 0; index < lines.length; index++) {
         const line = lines[index];
         const opening = line.match(/^(\s*)(`{3,}|~{3,})([^\s`]*)?(.*)$/);
         if (!opening) {
-            highlighted.push(highlightMarkdownLine(line));
+            highlighted.push(highlightMarkdownLine(line, markers));
             continue;
         }
 

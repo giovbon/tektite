@@ -191,6 +191,11 @@ func (a *App) migrate() error {
 			path TEXT PRIMARY KEY,
 			created_at TEXT NOT NULL DEFAULT (datetime('now'))
 		)`,
+		`CREATE TABLE IF NOT EXISTS app_settings (
+			key TEXT PRIMARY KEY,
+			value TEXT NOT NULL,
+			updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
 		`CREATE INDEX IF NOT EXISTS idx_attachments_note ON attachments(note_id, id)`,
 	}
 	for _, statement := range baseSchema {
@@ -207,6 +212,7 @@ func (a *App) migrate() error {
 		{version: 2, apply: migrateNoteLinks},
 		{version: 3, apply: migrateNoteVersions},
 		{version: 5, apply: migrateRemoveNoteHistory},
+		{version: 6, apply: migrateAppSettings},
 	}
 	for _, migration := range migrations {
 		var applied int
@@ -375,6 +381,17 @@ func migrateNoteVersions(tx *sql.Tx) error {
 // versions that shipped a per-note history feature.
 func migrateRemoveNoteHistory(tx *sql.Tx) error {
 	_, err := tx.Exec("DROP TABLE IF EXISTS note_versions")
+	return err
+}
+
+// migrateAppSettings stores small application-wide preferences, such as the
+// list of task markers, so every browser sees the same configuration.
+func migrateAppSettings(tx *sql.Tx) error {
+	_, err := tx.Exec(`CREATE TABLE IF NOT EXISTS app_settings (
+		key TEXT PRIMARY KEY,
+		value TEXT NOT NULL,
+		updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+	)`)
 	return err
 }
 
@@ -1222,6 +1239,8 @@ func (a *App) Handler(frontendDir string) http.Handler {
 	mux.HandleFunc("/api/notes/", a.handleNote)
 	mux.HandleFunc("/api/search", a.handleSearch)
 	mux.HandleFunc("/api/tags", a.handleTags)
+	mux.HandleFunc("/api/tasks", a.handleTasks)
+	mux.HandleFunc("/api/task-markers", a.handleTaskMarkers)
 	mux.HandleFunc("/api/backup", a.handleBackup)
 	mux.HandleFunc("/api/folders", a.handleFolders)
 	mux.HandleFunc("/api/folders/move", a.handleFolderMove)
@@ -1574,6 +1593,37 @@ func (a *App) handleTags(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, tags)
 }
 
+func (a *App) handleTasks(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w)
+		return
+	}
+	var markers []string
+	if raw := strings.TrimSpace(r.URL.Query().Get("markers")); raw != "" {
+		parsed, err := ParseTaskMarkers(raw)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		markers = parsed
+	} else {
+		saved, err := a.TaskMarkers()
+		if err != nil {
+			log.Printf("load task markers: %v", err)
+			http.Error(w, "failed to load task markers", http.StatusInternalServerError)
+			return
+		}
+		markers = saved
+	}
+	tasks, err := a.ListTasks(markers)
+	if err != nil {
+		log.Printf("load tasks: %v", err)
+		http.Error(w, "failed to load tasks", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, tasks)
+}
+
 func (a *App) handleFolderMove(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		methodNotAllowed(w)
@@ -1756,6 +1806,15 @@ func renderMarkdownPreview(w http.ResponseWriter, source []byte) {
 				link.Destination = []byte("#")
 			}
 		}
+		// The preview is also used to jump to a specific line (tasks,
+		// backlinks, outline). Annotate the blocks that can hold a line of
+		// text so the client can locate the exact scroll position.
+		switch node.Kind() {
+		case ast.KindParagraph, ast.KindListItem, ast.KindBlockquote:
+			if line, ok := previewSourceLine(node, source); ok {
+				node.SetAttributeString("data-source-line", strconv.Itoa(line))
+			}
+		}
 		return ast.WalkContinue, nil
 	}); err != nil {
 		log.Printf("walk markdown AST: %v", err)
@@ -1775,6 +1834,28 @@ func renderMarkdownPreview(w http.ResponseWriter, source []byte) {
 	if _, err := w.Write(rendered.Bytes()); err != nil {
 		log.Printf("write markdown preview: %v", err)
 	}
+}
+
+// previewSourceLine returns the zero-based line of a block in the preview
+// source. Lists and blockquotes do not expose line segments themselves, so
+// their first descendant text block provides the position.
+func previewSourceLine(node ast.Node, source []byte) (int, bool) {
+	if node.Type() != ast.TypeBlock {
+		return 0, false
+	}
+	if lines := node.Lines(); lines.Len() > 0 {
+		start := lines.At(0).Start
+		if start < 0 || start > len(source) {
+			return 0, false
+		}
+		return bytes.Count(source[:start], []byte{'\n'}), true
+	}
+	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+		if line, ok := previewSourceLine(child, source); ok {
+			return line, true
+		}
+	}
+	return 0, false
 }
 
 func safeMarkdownDestination(destination []byte) bool {

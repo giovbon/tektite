@@ -53,6 +53,7 @@ Para ARM64, compile nativamente no dispositivo ou configure um compilador C cruz
 - A API calcula backlinks e relações a partir de links Markdown e wikilinks resolvidos pelo título/caminho virtual das notas. A interface inclui um grafo interativo com filtro por título/pasta, destaque de conexões, zoom, movimento e abertura de notas.
 - Ao renomear uma nota, os links de entrada são atualizados: wikilinks (`[[Título]]`, `[[Título|alias]]`, `[[Pasta/Título]]`, `[[Título.md]]`, `[[Título#seção]]`), links Markdown e definições de referência passam a apontar para o novo título, preservando aliases, âncoras e trechos de código. Backlinks e grafo continuam apontando para a nota renomeada.
 - O autocomplete de wikilinks sugere notas pelo título e, depois de `#`, os cabeçalhos da nota de destino (`[[Página#`). Também aceita `[[#` para cabeçalhos da própria nota, e os links com âncora abrem a nota já posicionada na seção correspondente.
+- O painel **Tarefas** encontra marcações como `TODO:`, `FIXME:` e `BUG:` no texto de todas as notas, agrupa os resultados por nota e, com um clique, abre a nota na pasta correspondente e rola o editor e a pré-visualização até a linha marcada. Os marcadores são configuráveis em **Configurações → Tarefas**, ficam gravados no banco e valem para todos os navegadores que acessam a aplicação; eles também aparecem destacados no editor.
 - Mover uma nota ou uma pasta preserva os links baseados em caminho: destinos relativos são recalculados a partir da nova localização e caminhos absolutos (`/Pasta/Nota`) acompanham a pasta movida, tanto nos links de entrada quanto nos de saída. Links por título e trechos de código permanecem inalterados.
 - Editor Markdown próprio, inspirado no fluxo do Basalt, com barra de formatação, atalhos (`Ctrl/Cmd+B`, `I`, `K` e `Ctrl/Cmd+Alt+T` para inserir tabela; `Ctrl/Cmd+Alt+1/2/3` para escolher o modo e `Ctrl/Cmd+Alt+V` para alternar), desfazer/refazer, divisor redimensionável e modos dividido, edição e leitura. O modo edição destaca a sintaxe Markdown e blocos cercados usam Highlight.js (distribuição local, sem dependência de CDN); a leitura também colore o código e mostra o idioma informado na cerca, como ` ```js `.
 - Tags são lidas do frontmatter Markdown (`tags: sei-la`, lista YAML ou lista inline); tags legadas são migradas para o frontmatter quando a nota é aberta para edição. As tags aparecem no topo da lista e nos cards, podem ser clicadas para filtrar as notas e a API expõe a contagem de cada tag.
@@ -86,6 +87,8 @@ Ao anexar um arquivo pelo editor, uma imagem raster compatível é inserida como
 - `GET`, `PUT` e `DELETE /api/notes/{id}` (`PUT` aceita `version`; uma versão desatualizada retorna `409` com `{ "error", "note" }`)
 - `GET /api/search?q=...&mode=title|content&limit=30&offset=0&folder=...&tag=...` (`mode` assume `title` quando omitido)
 - `GET /api/tags` (nome e contagem de cada tag, sem diferenciar maiúsculas)
+- `GET /api/tasks?markers=TODO,FIXME` (linhas com marcadores de tarefa; sem `markers`, usa os marcadores salvos no servidor)
+- `GET` e `PUT /api/task-markers` (lista de marcadores compartilhada; `PUT` recebe `{ "markers": ["TODO", "LATER"] }`)
 - `GET /api/folders`
 - `POST /api/folders` com `{ "path": "Projetos/Ideias" }`
 - `POST /api/folders/move` com `{ "source": "Antiga", "target": "Arquivo" }`

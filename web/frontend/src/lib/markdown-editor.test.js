@@ -191,6 +191,23 @@ test('highlights wikilinks in the Markdown editor', () => {
     );
 });
 
+test('highlights configured task markers as standalone words', () => {
+    assert.equal(
+        highlightMarkdown('TODO: revisar', ['TODO']),
+        '<span class="md-task-marker" data-marker="TODO">TODO</span>: revisar'
+    );
+    assert.equal(
+        highlightMarkdown('todo: revisar', ['todo']),
+        '<span class="md-task-marker" data-marker="TODO">todo</span>: revisar'
+    );
+    assert.equal(highlightMarkdown('TODOLIST', ['TODO']), 'TODOLIST');
+    assert.equal(
+        highlightMarkdown('`TODO` e TODO', ['TODO']),
+        '<span class="md-code">`<span class="md-task-marker" data-marker="TODO">TODO</span>`</span> e ' +
+        '<span class="md-task-marker" data-marker="TODO">TODO</span>'
+    );
+});
+
 test('highlights Markdown structures and identifies fenced code languages', () => {
     const original = globalThis.hljs;
     globalThis.hljs = {
