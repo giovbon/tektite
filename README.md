@@ -1,6 +1,13 @@
-# Tektite (PKM Notes)
+# Invariante
 
-Aplicação local de notas Markdown com backend Go, SQLite/FTS5 e interface responsiva. As pastas são caminhos virtuais armazenados no SQLite; o app não cria arquivos `.md` no disco.
+<p>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="web/frontend/assets/brand/logo-lockup-dark.svg">
+    <img src="web/frontend/assets/brand/logo-lockup-light.svg" alt="Invariante" width="256">
+  </picture>
+</p>
+
+As mesmas notas, sob outra perspectiva. Aplicação local de notas Markdown com backend Go, SQLite/FTS5 e interface responsiva. As pastas são caminhos virtuais armazenados no SQLite; o app não cria arquivos `.md` no disco.
 
 ## Requisitos
 
@@ -94,7 +101,7 @@ duplica notas. Na primeira execução, o histórico anterior do tópico é ignor
 apenas mensagens novas são capturadas. As credenciais `NTFY_*` também podem ser
 definidas no `docker-compose.yml`.
 
-Antes de iniciar, o script verifica a porta escolhida e encerra uma instância anterior do PKM Notes que esteja escutando nela. Processos de outros aplicativos não são encerrados; nesse caso, escolha outra porta ou encerre o processo manualmente. A verificação requer `lsof` ou `fuser`.
+Antes de iniciar, o script verifica a porta escolhida e encerra uma instância anterior do Invariante que esteja escutando nela. Processos de outros aplicativos não são encerrados; nesse caso, escolha outra porta ou encerre o processo manualmente. A verificação requer `lsof` ou `fuser`.
 
 Para ARM64, compile nativamente no dispositivo ou configure um compilador C cruzado para o alvo. Como SQLite usa `cgo`, `GOARCH=arm64` isoladamente não produz um binário executável com o driver.
 

@@ -86,6 +86,9 @@ type App struct {
 	attachmentsDir string
 	auth           *authenticator
 	backupMu       sync.Mutex
+	eventsMu       sync.Mutex
+	events         map[chan uint64]struct{}
+	eventsSeq      uint64
 	// dataMu keeps the attachments directory consistent with the database.
 	// Uploads and exports take a read lock; restores and deletions take the
 	// write lock, so a restore can never swap the directory while a file is
@@ -756,6 +759,7 @@ func (a *App) CreateNote(note Note) (int64, error) {
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
+	a.notifyChange()
 	return id, nil
 }
 
@@ -819,7 +823,13 @@ func (a *App) UpdateNote(id int64, note Note) error {
 	if err := replaceNoteLinks(tx, id, note.Content); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if titleChanged || folderChanged {
+		a.notifyChange()
+	}
+	return nil
 }
 
 func (a *App) MoveNoteFolder(id int64, folder string) error {
@@ -855,7 +865,11 @@ func (a *App) MoveNoteFolder(id int64, folder string) error {
 	if err := relinkNotesAfterMove(tx, before, after, 0); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	a.notifyChange()
+	return nil
 }
 
 func (a *App) MoveFolder(source, target string) (string, int64, error) {
@@ -951,6 +965,7 @@ func (a *App) DeleteFolder(folder string) (int64, error) {
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
+	a.notifyChange()
 	return noteCount, nil
 }
 
@@ -1049,6 +1064,7 @@ func (a *App) moveFolder(source, destination string) (string, int64, error) {
 	if err := tx.Commit(); err != nil {
 		return "", 0, err
 	}
+	a.notifyChange()
 	return destination, count, nil
 }
 
@@ -1071,6 +1087,7 @@ func (a *App) DeleteNote(id int64) error {
 	if err := os.RemoveAll(noteDir); err != nil {
 		log.Printf("remove attachments for deleted note %d: %v", id, err)
 	}
+	a.notifyChange()
 	return nil
 }
 
@@ -1247,6 +1264,7 @@ func (a *App) Handler(frontendDir string) http.Handler {
 	mux.HandleFunc("/api/folders/rename", a.handleFolderRename)
 	mux.HandleFunc("/api/folders/delete", a.handleFolderDelete)
 	mux.HandleFunc("/api/folder-notes", a.handleFolderNotes)
+	mux.HandleFunc("/api/events", a.handleEvents)
 	mux.HandleFunc("/api/table", a.handleTable)
 	mux.HandleFunc("/api/graph", a.handleGraph)
 	mux.HandleFunc("/api/preview", a.handlePreview)
@@ -1264,7 +1282,8 @@ func requestLogger(next http.Handler) http.Handler {
 		elapsed := time.Since(start)
 		isAPIMutation := strings.HasPrefix(r.URL.Path, "/api/") &&
 			r.Method != http.MethodGet && r.URL.Path != "/api/preview"
-		if recorder.status >= http.StatusBadRequest || elapsed >= 500*time.Millisecond || isAPIMutation {
+		isEventStream := r.URL.Path == "/api/events"
+		if !isEventStream && (recorder.status >= http.StatusBadRequest || elapsed >= 500*time.Millisecond || isAPIMutation) {
 			log.Printf("%s %s %d %dB %s", r.Method, r.URL.RequestURI(), recorder.status,
 				recorder.bytes, elapsed.Round(time.Millisecond))
 		}
@@ -1294,6 +1313,12 @@ func (r *statusRecorder) Write(data []byte) (int, error) {
 	written, err := r.ResponseWriter.Write(data)
 	r.bytes += written
 	return written, err
+}
+
+// Unwrap lets http.ResponseController reach the underlying connection, which
+// is required for flushing server-sent events through the logging wrapper.
+func (r *statusRecorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
 }
 
 // revalidateStaticFiles prevents the browser from reusing a cached frontend
@@ -1543,12 +1568,16 @@ func (a *App) handleFolders(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w)
 		return
 	}
+	// Read the revision before the query so a change committed while the tree
+	// is being built still produces an event with a higher revision.
+	revision := a.currentRevision()
 	folders, err := a.FolderTree()
 	if err != nil {
 		log.Printf("load folder tree: %v", err)
 		http.Error(w, "failed to load folders", http.StatusInternalServerError)
 		return
 	}
+	w.Header().Set("X-Notes-Revision", strconv.FormatUint(revision, 10))
 	writeJSON(w, http.StatusOK, folders)
 }
 
@@ -1576,7 +1605,11 @@ func (a *App) CreateFolder(folder string) error {
 	if err := insertFolderPath(tx, folder); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	a.notifyChange()
+	return nil
 }
 
 func (a *App) handleTags(w http.ResponseWriter, r *http.Request) {
@@ -1993,7 +2026,7 @@ func main() {
 			log.Printf("HTTP shutdown: %v", err)
 		}
 	}()
-	log.Printf("ton618 listening on http://localhost:%d", portNumber)
+	log.Printf("Invariante listening on http://localhost:%d", portNumber)
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("serve application: %v", err)
 	}

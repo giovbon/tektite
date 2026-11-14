@@ -19,6 +19,8 @@ import (
 )
 
 const (
+	// Kept stable across the Invariante rebrand so existing backup archives
+	// remain importable.
 	backupFormat        = "pkm-notes-backup"
 	backupVersion       = 1
 	maxBackupUpload     = 512 << 20
@@ -298,6 +300,7 @@ func (a *App) RestoreBackup(data []byte) (int, int, error) {
 	}
 	committed = true
 	cleanupAttachments()
+	a.notifyChange()
 	return len(manifest.Notes), len(manifest.Attachments), nil
 }
 
@@ -560,7 +563,7 @@ func (a *App) handleBackup(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		a.backupMu.Lock()
 		defer a.backupMu.Unlock()
-		temp, err := os.CreateTemp("", "pkm-notes-backup-*.zip")
+		temp, err := os.CreateTemp("", "invariante-backup-*.zip")
 		if err != nil {
 			log.Printf("create backup: %v", err)
 			http.Error(w, "failed to create backup", http.StatusInternalServerError)
@@ -587,7 +590,7 @@ func (a *App) handleBackup(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "failed to create backup", http.StatusInternalServerError)
 			return
 		}
-		filename := "pkm-notes-" + time.Now().UTC().Format("20060102-150405") + ".zip"
+		filename := "invariante-" + time.Now().UTC().Format("20060102-150405") + ".zip"
 		w.Header().Set("Content-Type", "application/zip")
 		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filename}))
 		http.ServeContent(w, r, filename, info.ModTime(), temp)

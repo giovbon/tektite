@@ -4,7 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="">
-    <title>PKM Notes</title>
+    <title>Invariante</title>
+    <link rel="icon" href="/assets/brand/favicon.svg" type="image/svg+xml">
     <script src="/src/theme-init.js"></script>
     <link rel="preload" href="/vendor/inter/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="/styles/tokens.css">
@@ -18,7 +19,9 @@
 </head>
 <body class="panel-open">
     <aside class="activity-rail" aria-label="Navegação principal">
-        <button class="brand-mark" id="homeButton" type="button" aria-label="Mostrar todas as notas" title="Todas as notas">P</button>
+        <button class="brand-mark" id="homeButton" type="button" aria-label="Invariante — mostrar todas as notas" title="Invariante — todas as notas">
+            <img src="/assets/brand/logo-mark.svg" alt="">
+        </button>
         <button class="rail-button is-active" type="button" data-panel="files" aria-label="Abrir pastas" title="Pastas">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v9a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><path d="M3.5 8.5v-2a2 2 0 0 1 2-2h3l2 2"/></svg>
         </button>
@@ -58,8 +61,8 @@
     <main class="main-content">
         <header class="topbar">
             <div class="topbar-title">
-                <span class="brand-dot" aria-hidden="true"></span>
-                <h1>PKM Notes</h1>
+                <span class="brand-icon" aria-hidden="true"><img src="/assets/brand/logo-mark.svg" alt=""></span>
+                <h1>Invariante</h1>
                 <span class="breadcrumb" id="currentFolder">Todas as notas</span>
                 <span class="editor-breadcrumb-separator" aria-hidden="true">/</span>
                 <label class="sr-only" for="noteTitle">Título da nota</label>
@@ -114,20 +117,9 @@
 
             <section id="tableView" class="table-view" aria-label="Tabela de notas" hidden>
                 <div class="table-card">
-                    <div class="table-card-top">
-                        <div class="table-heading">
-                            <h2>Todas as notas</h2>
-                            <span class="table-meta" id="tableColumnsInfo"></span>
-                        </div>
-                        <div class="table-summary" id="tableSummary" aria-live="polite"></div>
-                    </div>
                     <div id="notesTableHost" class="notes-table-host">
                         <div id="notesTable" class="notes-table"></div>
                     </div>
-                    <footer class="table-footer">
-                        <span id="tableFooterInfo">Colunas geradas do frontmatter</span>
-                        <span>Clique em uma nota para abrir; expanda para ver os anexos.</span>
-                    </footer>
                 </div>
             </section>
         </div>

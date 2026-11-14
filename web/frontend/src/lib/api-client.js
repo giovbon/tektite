@@ -1,4 +1,11 @@
 export async function requestJSON(url, options = {}, onUnauthorized = () => globalThis.location.replace('/login.html')) {
+    const { data } = await requestJSONResponse(url, options, onUnauthorized);
+    return data;
+}
+
+// requestJSONResponse exposes response headers for callers that need metadata
+// alongside the decoded body, such as the folder tree revision.
+export async function requestJSONResponse(url, options = {}, onUnauthorized = () => globalThis.location.replace('/login.html')) {
     const response = await fetch(url, {
         ...options,
         headers: {
@@ -22,6 +29,6 @@ export async function requestJSON(url, options = {}, onUnauthorized = () => glob
         error.body = body;
         throw error;
     }
-    if (response.status === 204) return null;
-    return response.json();
+    if (response.status === 204) return { data: null, response };
+    return { data: await response.json(), response };
 }

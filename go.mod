@@ -1,4 +1,4 @@
-module pkm-notes
+module invariante
 
 go 1.27
 

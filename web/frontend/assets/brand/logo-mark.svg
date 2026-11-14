@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-label="Invariante">
+  <defs>
+    <linearGradient id="inv-mark-bar" x1="17" y1="8" x2="47" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7DD3FC"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="32" cy="32" rx="24" ry="10" transform="rotate(-27 32 32)" stroke="#4B9BFF" stroke-width="3.2" opacity=".55"/>
+  <rect x="29.5" y="10" width="5" height="44" rx="2.5" fill="url(#inv-mark-bar)"/>
+  <circle cx="32" cy="32" r="2.8" fill="#FFFFFF"/>
+</svg>

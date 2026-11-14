@@ -32,9 +32,9 @@ RUN set -eux; \
         -trimpath \
         -ldflags="-s -w -linkmode external -extldflags '-static'" \
         -tags "sqlite_fts5 sqlite_omit_load_extension" \
-        -o /pkm-notes-backend ./backend; \
-    head -c 4 /pkm-notes-backend | grep -q ELF || { \
-        echo "ERRO: /pkm-notes-backend não é um executável ELF."; \
+        -o /invariante-backend ./backend; \
+    head -c 4 /invariante-backend | grep -q ELF || { \
+        echo "ERRO: /invariante-backend não é um executável ELF."; \
         echo "Verifique se o pacote main está em ./backend."; \
         exit 1; \
     }; \
@@ -51,12 +51,12 @@ RUN apk add --no-cache ca-certificates tzdata && \
 
 WORKDIR /app
 
-COPY --from=builder /pkm-notes-backend /app/pkm-notes-backend
+COPY --from=builder /invariante-backend /app/invariante-backend
 # O backend serve a UI a partir de ./web/frontend (relativo ao WORKDIR).
 COPY --from=builder /src/web/frontend /app/web/frontend
 
 # Configurar permissões
-RUN chmod +x /app/pkm-notes-backend && \
+RUN chmod +x /app/invariante-backend && \
     mkdir -p /app/data && \
     chown -R appuser:appgroup /app
 
@@ -73,4 +73,4 @@ VOLUME ["/app/data"]
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD wget -qO- "http://127.0.0.1:${PORT}/api/health" >/dev/null 2>&1 || exit 1
 
-ENTRYPOINT ["/app/pkm-notes-backend"]
+ENTRYPOINT ["/app/invariante-backend"]

@@ -66,11 +66,11 @@ preciso editar o workflow.
 O Dockerfile é autossuficiente:
 
 ```bash
-docker build -t tektite:local .
+docker build -t invariante:local .
 
 # Multi-arquitetura (requer QEMU/binfmt no host)
 docker run --privileged --rm tonistiigi/binfmt --install all
-docker buildx build --platform linux/amd64,linux/arm64 -t tektite:local .
+docker buildx build --platform linux/amd64,linux/arm64 -t invariante:local .
 ```
 
 Ou use o script, que já publica o manifesto:

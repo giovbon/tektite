@@ -1,12 +1,12 @@
 services:
-  pkm-notes:
+  invariante:
     # Para usar a imagem publicada no Docker Hub, descomente `image` e
     # comente o bloco `build`.
     # image: giovbon/tektite:latest
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: pkm-notes
+    container_name: invariante
     restart: unless-stopped
     ports:
       - "8000:8000"

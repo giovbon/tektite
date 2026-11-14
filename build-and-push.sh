@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script de automação para construir e publicar a imagem do Tektite no Docker Hub.
+# Script de automação para construir e publicar a imagem do Invariante no Docker Hub.
 # Suporta múltiplas arquiteturas (amd64 e arm64) em um único manifesto.
 
 set -euo pipefail
@@ -55,7 +55,7 @@ ensure_qemu() {
 }
 
 main() {
-    print_info "=== Build e push do Tektite ==="
+    print_info "=== Build e push do Invariante ==="
 
     check_docker
 

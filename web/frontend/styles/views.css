@@ -1185,61 +1185,10 @@
         box-shadow: var(--shadow-lg);
     }
 
-    .table-card-top {
-        display: flex;
-        min-height: 52px;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-        padding: 8px 16px 8px 18px;
-        border-bottom: 1px solid var(--border);
-        background: color-mix(in srgb, var(--surface-raised) 52%, transparent);
-    }
-
-    .table-heading {
-        display: flex;
-        min-width: 0;
-        align-items: center;
-        gap: 10px;
-    }
-
-    .table-heading h2 {
-        margin: 0;
-        color: var(--text);
-        font-size: var(--text-base);
-        font-weight: 650;
-        letter-spacing: -0.01em;
-    }
-
-    .table-meta,
-    .table-summary {
-        color: var(--muted);
-        font-size: var(--text-xs);
-        font-variant-numeric: tabular-nums;
-    }
-
-    .table-summary {
-        flex: none;
-        white-space: nowrap;
-    }
-
-    .table-footer {
-        display: flex;
-        min-height: 44px;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-        padding: 0 16px;
-        border-top: 1px solid var(--border);
-        color: var(--faint);
-        background: color-mix(in srgb, var(--surface-raised) 30%, transparent);
-        font-size: var(--text-xs);
-    }
-
     .notes-table-host {
         position: relative;
         width: 100%;
-        height: calc(100vh - 360px);
+        height: calc(100vh - 264px);
         min-height: 320px;
     }
 
@@ -1269,7 +1218,13 @@
         background: color-mix(in srgb, var(--surface-raised) 40%, transparent) !important;
     }
 
+    .notes-table.tabulator .tabulator-headers,
     .notes-table.tabulator .tabulator-header .tabulator-col {
+        min-height: 32px !important;
+    }
+
+    .notes-table.tabulator .tabulator-header .tabulator-col {
+        justify-content: center;
         border-right: 0 !important;
         background: transparent !important;
     }
@@ -1665,35 +1620,6 @@
             border-radius: 0;
             background: transparent;
             box-shadow: none;
-        }
-
-        .table-card-top {
-            min-height: 0;
-            align-items: flex-start;
-            flex-direction: column;
-            gap: 4px;
-            padding: 10px 12px;
-            background: transparent;
-        }
-
-        .table-heading {
-            flex-wrap: wrap;
-        }
-
-        .table-summary {
-            white-space: normal;
-        }
-
-        .table-footer {
-            align-items: flex-start;
-            flex-direction: column;
-            gap: 2px;
-            padding: 8px 12px;
-            background: transparent;
-        }
-
-        .table-footer > span:last-child {
-            display: none;
         }
 
         .notes-table-host {

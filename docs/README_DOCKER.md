@@ -1,6 +1,6 @@
-# Docker Setup for PKM Notes
+# Docker Setup for Invariante
 
-Este documento explica como construir, rodar e distribuir a aplicação PKM Notes usando Docker.
+Este documento explica como construir, rodar e distribuir a aplicação Invariante usando Docker.
 
 ## Arquivos Criados
 
@@ -32,7 +32,7 @@ Script de automação para Docker Hub:
 ```bash
 #!/bin/bash
 
-# Script de automação para construir e pushar a imagem PKM Notes para Docker Hub
+# Script de automação para construir e pushar a imagem Invariante para Docker Hub
 # Suporta múltiplas arquiteturas, especialmente arm64 (ARM 64-bit)
 
 # Construir para amd64 e arm64, push para Docker Hub
@@ -84,17 +84,17 @@ docker compose down
 ```bash
 # O go-sqlite3 exige cgo: CGO_ENABLED=0 gera um binário que falha em runtime.
 go mod download
-CGO_ENABLED=1 go build -tags "sqlite_fts5 sqlite_omit_load_extension" -o bin/pkm-notes-backend ./backend
+CGO_ENABLED=1 go build -tags "sqlite_fts5 sqlite_omit_load_extension" -o bin/invariante-backend ./backend
 
 # Testar o binário
-./bin/pkm-notes-backend --help
+./bin/invariante-backend --help
 ```
 
 Para testar o build multi-arquitetura completo, use o Dockerfile (ele compila
 com cgo para a plataforma de destino):
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -t tektite:local .
+docker buildx build --platform linux/amd64,linux/arm64 -t invariante:local .
 ```
 
 ## Configuração GitHub Actions
@@ -145,16 +145,16 @@ FROM golang:1.27-alpine AS builder
 # O stage roda na plataforma de destino (arm64 via QEMU no CI), pois o cgo
 # precisa de um compilador nativo.
 CGO_ENABLED=1 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-  go build -tags "sqlite_fts5 sqlite_omit_load_extension" -o /pkm-notes-backend ./backend
+  go build -tags "sqlite_fts5 sqlite_omit_load_extension" -o /invariante-backend ./backend
 ```
 
 ## Baseado em Referência (Basalt)
 
 Este setup é baseado no projeto basalt com adaptações:
 
-| Característica | Basalt | PKM Notes |
+| Característica | Basalt | Invariante |
 |---------------|--------|-----------|
-| Nome do Binário | `basalt` | `pkm-notes-backend` |
+| Nome do Binário | `basalt` | `invariante-backend` |
 | Pacote Principal | `./cmd/basalt` | `./backend` |
 | Imagem Docker | `giovbon/tektite` | `giovbon/tektite` |
 | Database | SQLite integrado | SQLite integrado |
@@ -244,8 +244,8 @@ Se você estiver migrando do basalt:
 
 ### Arquivos Chave para Manter
 
-- `Dockerfile` (adaptado para pkm-notes)
-- `docker-compose.yml` (adaptado para pkm-notes)
+- `Dockerfile` (adaptado para o Invariante)
+- `docker-compose.yml` (adaptado para o Invariante)
 - `build-and-push.sh` (novo script de automação)
 - `.github/workflows/docker-publish.yml` (novo workflow)
 
@@ -284,4 +284,4 @@ Use basalt como referência, adapte para seu projeto. GitHub Actions workflow é
 
 ## Agradecimentos
 
-Baseado no excelente projeto reference [basalt](https://github.com/giovbon/basalt) com adaptações para o PKM Notes.
+Baseado no excelente projeto reference [basalt](https://github.com/giovbon/basalt) com adaptações para o Invariante.

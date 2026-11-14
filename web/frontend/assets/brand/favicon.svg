@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-label="Invariante">
+  <defs>
+    <linearGradient id="inv-fav-bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0EA5E9"/>
+      <stop offset="1" stop-color="#1D4ED8"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#inv-fav-bg)"/>
+  <ellipse cx="32" cy="32" rx="22" ry="9" transform="rotate(-27 32 32)" stroke="#BAE6FD" stroke-width="4" opacity=".9"/>
+  <rect x="30" y="12" width="4" height="40" rx="2" fill="#FFFFFF"/>
+  <circle cx="32" cy="32" r="2.6" fill="#0B1220"/>
+</svg>

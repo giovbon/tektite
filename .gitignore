@@ -1,5 +1,5 @@
 # Build artifacts
-/pkm-notes-backend
+/invariante-backend
 /bin/
 
 # Local application data (notes, WAL, attachments)

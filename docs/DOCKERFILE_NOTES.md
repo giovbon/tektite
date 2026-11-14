@@ -1,11 +1,11 @@
-# Docker para PKM Notes
+# Docker para Invariante
 
-Este diretório contém os arquivos de configuração Docker para construir, rodar e distribuir o PKM Notes.
+Este diretório contém os arquivos de configuração Docker para construir, rodar e distribuir o Invariante.
 
 ## Arquivos
 
 ### 1. Dockerfile
-Um Dockerfile multi-estágio para construir a aplicação PKM Notes:
+Um Dockerfile multi-estágio para construir a aplicação Invariante:
 
 - **Estágio 1 (Builder)**: Compila o binário Go usando a imagem `golang:1.27-alpine`
   - Suporta múltiplas arquiteturas (amd64, arm64)
@@ -47,8 +47,8 @@ Script de automação para construir e pushar para Docker Hub:
 docker compose up -d
 
 # Ou construir manualmente usando Dockerfile
-docker build -t pkm-notes:latest .
-docker run -d -p 8000:8000 --name pkm-notes pkm-notes:latest
+docker build -t invariante:latest .
+docker run -d -p 8000:8000 --name invariante invariante:latest
 
 # Verificar saúde
 curl http://localhost:8000/api/health
@@ -102,10 +102,10 @@ docker push giovbon/tektite:latest
 
 ## Sincronização com Projeto de Referência (basalt)
 
-Este Dockerfile é baseado no projeto reference basalt, com adaptações específicas para o PKM Notes:
+Este Dockerfile é baseado no projeto reference basalt, com adaptações específicas para o Invariante:
 
-- Adaptou nome do binário (`pkm-notes-backend` vs `basalt`)
+- Adaptou nome do binário (`invariante-backend` vs `basalt`)
 - Atualizou importações Go e dependências (`github.com/mattn/go-sqlite3`, `github.com/yuin/goldmark`)
 - Configurou rotas de API diferentes
-- Adicionou scripts específicos para PKM Notes (`run.sh`)
+- Adicionou scripts específicos para o Invariante (`run.sh`)
 - Adaptou configurações de frontend (`./web/frontend` vs `./web`)

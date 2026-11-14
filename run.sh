@@ -15,7 +15,7 @@ Usage: ./run.sh [--data-dir PATH] [--port PORT]
   AUTHENTICATION_COOKIE_SECURE=true.
   --help      Show this help
 
-An existing PKM Notes process listening on the selected port is stopped before
+An existing Invariante process listening on the selected port is stopped before
 the server starts. Other applications are left running; use a different port.
 EOF
 }
@@ -75,7 +75,7 @@ find_listener_pids() {
     fi
 }
 
-is_pkm_notes_process() {
+is_invariante_process() {
     local pid="$1"
     local owner executable
 
@@ -84,10 +84,12 @@ is_pkm_notes_process() {
     [[ "$owner" == "$EUID" ]] || return 1
     executable="$(basename -- "$(readlink -f "/proc/$pid/exe" 2>/dev/null)")"
     executable="${executable% (deleted)}"
-    [[ "$executable" == "pkm-notes-backend" || "$executable" == "simple_server" ]]
+    # The previous binary name is accepted so upgrades can stop an instance
+    # that is still running from an older checkout.
+    [[ "$executable" == "invariante-backend" || "$executable" == "pkm-notes-backend" || "$executable" == "simple_server" ]]
 }
 
-stop_existing_pkm_notes() {
+stop_existing_invariante() {
     local pid attempt
     local -a pids=()
     mapfile -t pids < <(find_listener_pids | sort -u)
@@ -98,15 +100,15 @@ stop_existing_pkm_notes() {
             echo "Error: could not safely identify the process using port $PORT." >&2
             return 1
         fi
-        if ! is_pkm_notes_process "$pid"; then
+        if ! is_invariante_process "$pid"; then
             echo "Error: port $PORT is occupied by another process (PID $pid); leaving it running." >&2
-            echo "Stop that process yourself or start PKM Notes on another port with --port." >&2
+            echo "Stop that process yourself or start Invariante on another port with --port." >&2
             return 1
         fi
     done
 
     for pid in "${pids[@]}"; do
-        echo "Stopping existing PKM Notes process (PID $pid) on port $PORT..."
+        echo "Stopping existing Invariante process (PID $pid) on port $PORT..."
         kill -TERM "$pid" 2>/dev/null || true
     done
 
@@ -117,8 +119,8 @@ stop_existing_pkm_notes() {
     done
 
     for pid in "${pids[@]}"; do
-        if is_pkm_notes_process "$pid"; then
-            echo "PKM Notes process (PID $pid) did not stop; forcing it to exit."
+        if is_invariante_process "$pid"; then
+            echo "Invariante process (PID $pid) did not stop; forcing it to exit."
             kill -KILL "$pid" 2>/dev/null || true
         else
             echo "Error: port $PORT is still occupied by another process; leaving it running." >&2
@@ -128,7 +130,7 @@ stop_existing_pkm_notes() {
     sleep 0.2
     mapfile -t pids < <(find_listener_pids | sort -u)
     if ((${#pids[@]})); then
-        echo "Error: port $PORT is still occupied; cannot safely start PKM Notes." >&2
+        echo "Error: port $PORT is still occupied; cannot safely start Invariante." >&2
         return 1
     fi
 }
@@ -138,12 +140,12 @@ if ! command -v go >/dev/null 2>&1; then
     exit 1
 fi
 
-stop_existing_pkm_notes
+stop_existing_invariante
 
 cd "$SCRIPT_DIR"
-echo "Building PKM Notes with SQLite FTS5..."
-go build -tags sqlite_fts5 -o "$SCRIPT_DIR/pkm-notes-backend" ./backend
+echo "Building Invariante with SQLite FTS5..."
+go build -tags sqlite_fts5 -o "$SCRIPT_DIR/invariante-backend" ./backend
 
-echo "Starting PKM Notes at http://localhost:$PORT"
+echo "Starting Invariante at http://localhost:$PORT"
 echo "Data directory: $DATA_DIR"
-exec "$SCRIPT_DIR/pkm-notes-backend" --data-dir "$DATA_DIR" --port "$PORT"
+exec "$SCRIPT_DIR/invariante-backend" --data-dir "$DATA_DIR" --port "$PORT"

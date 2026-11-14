@@ -131,7 +131,7 @@ func TestNotesAPIAndPagination(t *testing.T) {
 	rootRequest := httptest.NewRequest(http.MethodGet, "/", nil)
 	rootResponse := httptest.NewRecorder()
 	handler.ServeHTTP(rootResponse, rootRequest)
-	if rootResponse.Code != http.StatusOK || !strings.Contains(rootResponse.Body.String(), "<title>PKM Notes</title>") {
+	if rootResponse.Code != http.StatusOK || !strings.Contains(rootResponse.Body.String(), "<title>Invariante</title>") {
 		t.Fatalf("homepage response = %d, body = %s", rootResponse.Code, rootResponse.Body.String())
 	}
 	if cacheControl := rootResponse.Header().Get("Cache-Control"); cacheControl != "no-cache" {

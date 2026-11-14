@@ -1,4 +1,4 @@
-import { requestJSON } from './lib/api-client.js';
+import { requestJSON, requestJSONResponse } from './lib/api-client.js';
 import { CommandPalette } from './lib/command-palette.js';
 import { ensureFrontmatterTags, extractMarkdownOutline, frontmatterLineOffset, highlightMarkdown, MarkdownEditor, parseFrontmatter, stripFrontmatter, DEFAULT_TASK_MARKERS } from './lib/markdown-editor.js';
 import { GraphView } from './lib/graph-view.js';
@@ -55,7 +55,6 @@ const state = {
     tableRequestID: 0,
     tableKey: '',
     tableLoaded: false,
-    tableColumnCount: 0,
     wikilinkRequestID: 0,
     wikilinkTimer: null,
     wikilinkHeadingCache: new Map(),
@@ -68,6 +67,12 @@ const state = {
 };
 let editorSplitPercent = 50;
 let workspacePanelWidth = 280;
+let changeEvents = null;
+let folderTreeRefreshTimer = null;
+let folderTreeRefreshRunning = false;
+let folderTreeRefreshQueued = false;
+let folderTreeRevision = 0;
+let pendingTreeRevision = 0;
 
 const elements = {
     searchView: document.querySelector('#searchView'),
@@ -77,9 +82,6 @@ const elements = {
     resultsSection: document.querySelector('#resultsSection'),
     tableView: document.querySelector('#tableView'),
     notesTable: document.querySelector('#notesTable'),
-    tableSummary: document.querySelector('#tableSummary'),
-    tableColumnsInfo: document.querySelector('#tableColumnsInfo'),
-    tableFooterInfo: document.querySelector('#tableFooterInfo'),
     notesList: document.querySelector('#notesList'),
     resultCount: document.querySelector('#resultCount'),
     resultsTitle: document.querySelector('#resultsTitle'),
@@ -226,6 +228,7 @@ async function initialize() {
         return;
     }
     setupEventListeners();
+    setupChangeEvents();
     setupTheme();
     const savedPanelWidth = Number(localStorage.getItem('workspacePanelWidth'));
     if (Number.isFinite(savedPanelWidth) && savedPanelWidth > 0) workspacePanelWidth = savedPanelWidth;
@@ -800,7 +803,7 @@ function resetTableContainer() {
 function tableHeight() {
     const host = document.querySelector('#notesTableHost');
     const measured = host?.clientHeight || 0;
-    return Math.max(280, Math.floor(measured || window.innerHeight - 360));
+    return Math.max(280, Math.floor(measured || window.innerHeight - 264));
 }
 
 function tablePropertyKeys(notes) {
@@ -844,7 +847,6 @@ function renderTable() {
     }
 
     const propertyKeys = tablePropertyKeys(state.tableData);
-    state.tableColumnCount = propertyKeys.length;
     const rows = state.tableData.map(note => {
         const attachments = (note.attachments || []).map(attachment => tableAttachmentRow(note, attachment));
         const row = {
@@ -909,7 +911,6 @@ function renderTable() {
         columns,
         height: tableHeight(),
         layout: 'fitDataStretch',
-        headerHeight: 36,
         rowHeight: 40,
         placeholder: 'Nenhuma nota encontrada.',
         movableColumns: false,
@@ -962,13 +963,7 @@ function updateTableSummary() {
     }
     const noteLabel = `${notes} ${notes === 1 ? 'nota' : 'notas'}`;
     const attachmentLabel = `${attachments} ${attachments === 1 ? 'anexo' : 'anexos'}`;
-    elements.tableSummary.textContent = `${noteLabel} · ${attachmentLabel}`;
     elements.resultCount.textContent = `${noteLabel} · ${attachmentLabel}`;
-    elements.tableColumnsInfo.textContent =
-        `${state.tableColumnCount} ${state.tableColumnCount === 1 ? 'coluna dinâmica' : 'colunas dinâmicas'}`;
-    elements.tableFooterInfo.textContent = query
-        ? `${noteLabel} · ${attachmentLabel} para “${query}”`
-        : `${noteLabel} · ${attachmentLabel} · colunas geradas do frontmatter`;
 }
 
 function tableTextSorter(left, right) {
@@ -1200,8 +1195,11 @@ function downloadTableAttachment(data) {
 
 async function loadFolders() {
     try {
-        state.folders = await requestJSON('/api/folders');
+        const { data, response } = await requestJSONResponse('/api/folders');
+        state.folders = data;
         if (!Array.isArray(state.folders)) throw new Error('resposta de pastas inválida');
+        const revision = Number(response.headers.get('X-Notes-Revision'));
+        if (Number.isFinite(revision) && revision > folderTreeRevision) folderTreeRevision = revision;
         if (elements.panel.dataset.panel === 'files') renderFolderPanel();
     } catch (error) {
         showMessage(`Não foi possível carregar as pastas: ${error.message}`, 'error');
@@ -1581,7 +1579,7 @@ async function exportBackup(button = document.querySelector('#exportBackup')) {
         const blob = await response.blob();
         const disposition = response.headers.get('Content-Disposition') || '';
         const match = /filename="?([^";]+)"?/i.exec(disposition);
-        const filename = match ? match[1] : `pkm-notes-${new Date().toISOString().slice(0, 10)}.zip`;
+        const filename = match ? match[1] : `invariante-${new Date().toISOString().slice(0, 10)}.zip`;
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
@@ -4069,6 +4067,52 @@ async function moveFolderToParent(source, target) {
 function rebaseFolderPath(folder, source, destination) {
     if (folder === source) return destination;
     return folder.startsWith(`${source}/`) ? destination + folder.slice(source.length) : folder;
+}
+
+function setupChangeEvents() {
+    if (changeEvents || !('EventSource' in window)) return;
+    changeEvents = new EventSource('/api/events');
+    changeEvents.addEventListener('tree', event => {
+        let revision = Number.POSITIVE_INFINITY;
+        try {
+            const parsed = JSON.parse(event.data);
+            if (Number.isFinite(parsed?.revision) && parsed.revision > 0) revision = parsed.revision;
+        } catch {
+            // Older servers may omit the payload; a refresh is still harmless.
+        }
+        pendingTreeRevision = Math.max(pendingTreeRevision, revision);
+        scheduleFolderTreeRefresh();
+    });
+}
+
+function scheduleFolderTreeRefresh() {
+    window.clearTimeout(folderTreeRefreshTimer);
+    folderTreeRefreshTimer = window.setTimeout(() => {
+        folderTreeRefreshTimer = null;
+        // A local mutation already refreshed the tree after the event was
+        // emitted, so its echo would only cause a second render.
+        if (pendingTreeRevision <= folderTreeRevision) return;
+        void refreshFolderTreeFromEvent();
+    }, 150);
+}
+
+async function refreshFolderTreeFromEvent() {
+    if (folderTreeRefreshRunning) {
+        folderTreeRefreshQueued = true;
+        return;
+    }
+    folderTreeRefreshRunning = true;
+    try {
+        await refreshFolderTree();
+    } catch (error) {
+        showMessage(`Não foi possível atualizar as pastas: ${error.message}`, 'error');
+    } finally {
+        folderTreeRefreshRunning = false;
+        if (folderTreeRefreshQueued) {
+            folderTreeRefreshQueued = false;
+            scheduleFolderTreeRefresh();
+        }
+    }
 }
 
 async function refreshFolderTree() {
