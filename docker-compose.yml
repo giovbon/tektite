@@ -17,6 +17,19 @@ services:
       # - AUTHENTICATION_PASSWORD=troque-esta-senha
       # Habilite somente quando o navegador acessar o app por HTTPS.
       # - AUTHENTICATION_COOKIE_SECURE=true
+      # Captura de mensagens de um tópico ntfy na pasta Inbox.
+      # Para tópicos públicos:
+      # - NTFY_ENABLED=true
+      # - NTFY_SERVER_URL=https://ntfy.sh
+      # - NTFY_TOPIC=meu-topico
+      # Para tópicos protegidos (com autenticação básica):
+      # - NTFY_ENABLED=true
+      # - NTFY_SERVER_URL=https://ntfy.sh
+      # - NTFY_TOPIC=meu-topico
+      # - NTFY_USERNAME=seu_usuario
+      # - NTFY_PASSWORD=sua_senha
+      # - NTFY_FOLDER=Inbox
+      # - NTFY_TAGS=ntfy
     volumes:
       # Persistência dos seus dados no host.
       - ./data:/app/data

@@ -39,6 +39,61 @@ AUTHENTICATION_PASSWORD='uma-senha-forte' AUTHENTICATION_COOKIE_SECURE=true ./ru
 
 `AUTHENTICATION_COOKIE_SECURE=true` deve ser usado somente quando o navegador acessa o app por HTTPS; caso contrário, o navegador não enviará o cookie.
 
+### Captura via ntfy
+
+O backend pode assinar um tópico do [ntfy](https://ntfy.sh) e transformar cada mensagem em uma nota na pasta virtual **Inbox**. O recurso fica desligado por padrão:
+
+```sh
+NTFY_ENABLED=true \
+NTFY_SERVER_URL=https://ntfy.sh \
+NTFY_TOPIC=meu-topico \
+./run.sh
+```
+
+Para tópicos protegidos (com autenticação básica):
+
+```sh
+NTFY_ENABLED=true \
+NTFY_SERVER_URL=https://ntfy.sh \
+NTFY_TOPIC=meu-topico \
+NTFY_USERNAME=seu_usuario \
+NTFY_PASSWORD=sua_senha \
+./run.sh
+```
+
+| Variável | Padrão | Descrição |
+| --- | --- | --- |
+| `NTFY_ENABLED` | `false` | Ativa a assinatura do tópico. |
+| `NTFY_SERVER_URL` | `https://ntfy.sh` | URL base do servidor ntfy (pode ser self-hosted). |
+| `NTFY_TOPIC` | *(vazio)* | Tópico monitorado; obrigatório quando o recurso está ativo. |
+| `NTFY_USERNAME` | *(vazio)* | Usuário da conta ntfy, para tópicos protegidos. |
+| `NTFY_PASSWORD` | *(vazio)* | Senha da conta ntfy, para tópicos protegidos. |
+| `NTFY_FOLDER` | `Inbox` | Pasta virtual onde as notas capturadas são salvas. |
+| `NTFY_TAGS` | `ntfy` | Tags separadas por vírgulas aplicadas às notas capturadas. |
+
+**Tópicos protegidos requerem nome de usuário e senha**
+Se o tópico ntfy usar autenticação básica (como `ntfy.sh/meu-topico?poll=##` com um painel protegido), defina `NTFY_USERNAME` e `NTFY_PASSWORD`. Ambas devem ser configuradas juntas.
+
+Para testar, publique uma mensagem no tópico; ela deve aparecer no Inbox em alguns segundos:
+
+```sh
+curl -d "Boleto do condomínio vence sexta-feira" https://ntfy.sh/meu-topico
+```
+
+O título da nota é gerado automaticamente a partir das palavras mais
+representativas da mensagem e do nome dos anexos, para que a lista do Inbox
+mostre o assunto sem precisar abrir cada nota. Palavras comuns (artigos,
+preposições e verbos genéricos) são ignoradas; até três palavras são escolhidas
+e mantidas na ordem em que aparecem no texto. Quando não há palavras úteis, o
+título usa o título enviado no ntfy ou um carimbo de data e hora.
+
+Anexos são baixados para o armazenamento de anexos do próprio app (limite de
+25 MiB por arquivo) e aparecem como imagem ou link Markdown na nota. Ao
+reconectar ou reiniciar, o monitor retoma do último evento processado e não
+duplica notas. Na primeira execução, o histórico anterior do tópico é ignorado;
+apenas mensagens novas são capturadas. As credenciais `NTFY_*` também podem ser
+definidas no `docker-compose.yml`.
+
 Antes de iniciar, o script verifica a porta escolhida e encerra uma instância anterior do PKM Notes que esteja escutando nela. Processos de outros aplicativos não são encerrados; nesse caso, escolha outra porta ou encerre o processo manualmente. A verificação requer `lsof` ou `fuser`.
 
 Para ARM64, compile nativamente no dispositivo ou configure um compilador C cruzado para o alvo. Como SQLite usa `cgo`, `GOARCH=arm64` isoladamente não produz um binário executável com o driver.
@@ -62,6 +117,7 @@ Para ARM64, compile nativamente no dispositivo ou configure um compilador C cruz
 - Interface adaptada para desktop e mobile; tema claro/escuro.
 - Design system em CSS puro, sem etapa de build: tokens em `web/frontend/styles/tokens.css`, base em `base.css`, componentes reutilizáveis em `components.css` e layouts de tela em `views.css`. Os temas claro e escuro, foco, movimento reduzido, tipografia e cores de sintaxe são derivados dos mesmos tokens.
 - Paleta de comandos com `Ctrl/Cmd+K` para criar notas, navegar entre telas, alternar o tema, exportar/importar backups e abrir notas por busca instantânea. A paleta também pode ser aberta pelo botão de busca na barra superior.
+- Captura via ntfy: mensagens de um tópico viram notas na pasta **Inbox**, com anexos, tags e título automático extraído das palavras mais representativas do texto e do nome dos arquivos. A configuração é feita por variáveis `NTFY_*` (veja **Captura via ntfy**).
 
 O preview usa Goldmark no backend. HTML bruto é mantido inativo e destinos com esquemas inseguros em links/imagens são neutralizados.
 
@@ -72,6 +128,7 @@ O servidor envia cabeçalhos de segurança (`Content-Security-Policy`, `X-Frame-
 ## Dados, anexos e backup
 
 - As notas, pastas vazias e metadados ficam em `notes.db` no diretório de dados. Os caminhos das pastas associadas às notas também são mantidos nas próprias notas. O índice de busca FTS5 e o índice de vínculos (`note_links`) são mantidos no mesmo banco. O grafo e os backlinks são resolvidos a partir desse índice, sem reler o conteúdo de todas as notas a cada consulta.
+- O estado da captura ntfy (último evento e IDs já processados) fica em `app_settings`, no mesmo `notes.db`; não há arquivo de estado separado para backup.
 - Anexos são gravados em `attachments/<id-da-nota>/` no mesmo diretório de dados. O nome físico é aleatório; o nome original e o tipo de mídia ficam nos metadados SQLite. Assim, mover a nota para outra pasta virtual não move nem quebra o arquivo.
 - Ao excluir uma nota, seus metadados de anexos são removidos pelo SQLite e os arquivos daquela nota são apagados do disco.
 - Use **Configurações → Backup e restauração** para exportar ou importar um `.zip`. A exportação inclui `manifest.json`, cada nota como um arquivo Markdown legível em `notes/` e todos os anexos em `attachments/`. A importação valida o arquivo e substitui notas, pastas, tags e anexos atuais; IDs de notas e anexos são preservados para que os links dentro do conteúdo continuem funcionando. A importação é tudo ou nada: um arquivo inválido não altera os dados existentes.

@@ -1946,6 +1946,18 @@ func main() {
 	}
 	defer app.Close()
 
+	ntfyConfig, err := LoadNtfyConfig()
+	if err != nil {
+		log.Fatalf("configure ntfy capture: %v", err)
+	}
+	var ntfyMonitor *NtfyMonitor
+	if ntfyConfig.Enabled {
+		ntfyMonitor, err = NewNtfyMonitor(app, ntfyConfig)
+		if err != nil {
+			log.Fatalf("configure ntfy capture: %v", err)
+		}
+	}
+
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", portNumber),
 		Handler:           app.Handler("./web/frontend"),
@@ -1956,6 +1968,20 @@ func main() {
 	}
 	signals, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
+
+	var ntfyDone chan struct{}
+	if ntfyMonitor != nil {
+		ntfyDone = make(chan struct{})
+		go func() {
+			defer close(ntfyDone)
+			log.Printf("ntfy capture enabled for topic %q into folder %q",
+				ntfyConfig.Topic, ntfyConfig.Folder)
+			if err := ntfyMonitor.Run(signals); err != nil {
+				log.Printf("ntfy monitor stopped: %v", err)
+			}
+		}()
+	}
+
 	shutdownDone := make(chan struct{})
 	go func() {
 		defer close(shutdownDone)
@@ -1972,4 +1998,7 @@ func main() {
 		log.Fatalf("serve application: %v", err)
 	}
 	<-shutdownDone
+	if ntfyDone != nil {
+		<-ntfyDone
+	}
 }
