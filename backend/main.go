@@ -424,19 +424,33 @@ func (a *App) ListNotes(folder, tag string, limit, offset int) (Page, error) {
 }
 
 func (a *App) ListFolderNotes(folder string, limit, offset int) (Page, error) {
-	var total int
-	if err := a.db.QueryRow("SELECT COUNT(*) FROM notes WHERE folder = ?", folder).Scan(&total); err != nil {
-		return Page{}, err
-	}
-	rows, err := a.db.Query(`SELECT rowid, title, folder, substr(COALESCE(content, ''), 1, 180), updated_at, COALESCE(tags, '')
+	rows, err := a.db.Query(`SELECT rowid, title, folder, substr(COALESCE(content, ''), 1, 180),
+		updated_at, COALESCE(tags, ''), COALESCE(content, '')
 		FROM notes WHERE folder = ?
-		ORDER BY title COLLATE NOCASE, rowid LIMIT ? OFFSET ?`, folder, limit, offset)
+		ORDER BY title COLLATE NOCASE, rowid`, folder)
 	if err != nil {
 		return Page{}, err
 	}
 	defer rows.Close()
-	items, err := scanSummaries(rows)
-	if err != nil {
+	items := make([]NoteSummary, 0, limit)
+	total := 0
+	for rows.Next() {
+		var item NoteSummary
+		var tags, content string
+		if err := rows.Scan(&item.ID, &item.Title, &item.Folder, &item.Preview,
+			&item.UpdatedAt, &tags, &content); err != nil {
+			return Page{}, err
+		}
+		if frontmatterHidesFromExplorer(content) {
+			continue
+		}
+		if total >= offset && len(items) < limit {
+			item.Tags = splitTags(tags)
+			items = append(items, item)
+		}
+		total++
+	}
+	if err := rows.Err(); err != nil {
 		return Page{}, err
 	}
 	return Page{Items: items, Total: total, Limit: limit, Offset: offset}, nil
@@ -1166,6 +1180,11 @@ func frontmatterTags(content string) ([]string, bool) {
 		return tags, true
 	}
 	return nil, false
+}
+
+func frontmatterHidesFromExplorer(content string) bool {
+	hidden, ok := frontmatterProperties(content)["hide_from_explorer"].(bool)
+	return ok && hidden
 }
 
 func normalizeFolder(value string) (string, error) {

@@ -161,6 +161,7 @@ func (a *App) NoteGraph() (NoteGraph, error) {
 		graph.Nodes = append(graph.Nodes, note.GraphNode)
 	}
 	seenEdges := make(map[[3]int64]struct{})
+	connectedNotes := make(map[int64]struct{})
 	rows, err := a.db.Query(`SELECT source_id, target_key, kind
 		FROM note_links ORDER BY source_id, target_key, kind`)
 	if err != nil {
@@ -186,11 +187,20 @@ func (a *App) NoteGraph() (NoteGraph, error) {
 			continue
 		}
 		seenEdges[edgeKey] = struct{}{}
+		connectedNotes[note.ID] = struct{}{}
+		connectedNotes[targetID] = struct{}{}
 		graph.Edges = append(graph.Edges, GraphEdge{Source: note.ID, Target: targetID, Type: kind})
 	}
 	if err := rows.Err(); err != nil {
 		return NoteGraph{}, err
 	}
+	connectedNodes := graph.Nodes[:0]
+	for _, node := range graph.Nodes {
+		if _, connected := connectedNotes[node.ID]; connected {
+			connectedNodes = append(connectedNodes, node)
+		}
+	}
+	graph.Nodes = connectedNodes
 	sort.Slice(graph.Nodes, func(i, j int) bool { return graph.Nodes[i].ID < graph.Nodes[j].ID })
 	sort.Slice(graph.Edges, func(i, j int) bool {
 		if graph.Edges[i].Source != graph.Edges[j].Source {

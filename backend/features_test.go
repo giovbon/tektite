@@ -169,6 +169,16 @@ func TestNoteGraphAndBacklinksResolveMarkdownAndWikilinks(t *testing.T) {
 	if len(targets) != 2 || targets[targetID] != "wikilink" || targets[otherID] != "markdown" {
 		t.Fatalf("unexpected graph edges from source: %#v", graph.Edges)
 	}
+	if len(graph.Nodes) != 3 {
+		t.Fatalf("graph should include only notes participating in links, got %#v", graph.Nodes)
+	}
+	graphNodeIDs := make(map[int64]bool)
+	for _, node := range graph.Nodes {
+		graphNodeIDs[node.ID] = true
+	}
+	if !graphNodeIDs[sourceID] || !graphNodeIDs[targetID] || !graphNodeIDs[otherID] {
+		t.Fatalf("graph is missing a linked note: %#v", graph.Nodes)
+	}
 	backlinks, err := app.Backlinks(targetID)
 	if err != nil {
 		t.Fatal(err)

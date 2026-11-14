@@ -557,6 +557,34 @@ func TestFolderNotesEndpointListsExactFolderAndRoot(t *testing.T) {
 	}
 }
 
+func TestFolderNotesHideFrontmatterNotesAndPaginateVisibleResults(t *testing.T) {
+	app, err := NewApp(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Close()
+
+	for _, note := range []Note{
+		{Title: "A hidden note", Folder: "Projects", Content: "---\nhide_from_explorer: true\n---\nHidden"},
+		{Title: "B visible note", Folder: "Projects", Content: "---\nhide_from_explorer: false\n---\nVisible"},
+		{Title: "C quoted value", Folder: "Projects", Content: "---\nhide_from_explorer: \"true\"\n---\nVisible"},
+		{Title: "D nested value", Folder: "Projects", Content: "---\nother:\n  hide_from_explorer: true\n---\nVisible"},
+	} {
+		if _, err := app.CreateNote(note); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	page, err := app.ListFolderNotes("Projects", 2, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 3 || len(page.Items) != 2 ||
+		page.Items[0].Title != "C quoted value" || page.Items[1].Title != "D nested value" {
+		t.Fatalf("folder page should paginate visible notes only: %#v", page)
+	}
+}
+
 func TestFolderAndNoteMoves(t *testing.T) {
 	app, err := NewApp(t.TempDir())
 	if err != nil {

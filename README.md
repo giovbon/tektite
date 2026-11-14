@@ -168,7 +168,9 @@ Ao anexar um arquivo pelo editor, uma imagem raster compatível é inserida como
 
 Listagens aceitam limites de 1 a 100 registros e filtram por tag exata, sem diferenciar maiúsculas de minúsculas. Títulos aceitam até 256 caracteres, conteúdo até 5 MiB e caminhos de pasta devem ser relativos. Uploads aceitam um arquivo de até 25 MiB; são enviados como `multipart/form-data` usando o campo `file`. Links para anexos são servidos como download; imagens raster podem ser exibidas inline com `?inline=1`.
 
-O endpoint do grafo retorna `{ "nodes": [{ "id", "title", "folder" }], "edges": [{ "source", "target", "type" }] }`. Os tipos de aresta são `markdown` e `wikilink`. Wikilinks aceitam `[[Título]]` e `[[Título|alias]]`; links Markdown locais resolvem caminhos de nota com ou sem extensão `.md`. URLs externas não viram relações entre notas.
+O endpoint do grafo retorna `{ "nodes": [{ "id", "title", "folder" }], "edges": [{ "source", "target", "type" }] }` e inclui somente notas que participam de pelo menos uma relação. Os tipos de aresta são `markdown` e `wikilink`. Wikilinks aceitam `[[Título]]` e `[[Título|alias]]`; links Markdown locais resolvem caminhos de nota com ou sem extensão `.md`. URLs externas não viram relações entre notas.
+
+Para manter uma nota fora da árvore do explorador de pastas e arquivos, adicione `hide_from_explorer: true` ao frontmatter YAML da nota. Isso não remove a nota das demais listagens, da busca ou do grafo.
 
 Com autenticação habilitada, `POST /api/auth/login` recebe `{ "password": "..." }` em JSON e define o cookie de sessão; o navegador deve manter esse cookie nas chamadas seguintes. `GET /api/auth/status` informa se a autenticação está habilitada e se a sessão atual está autenticada.
 
