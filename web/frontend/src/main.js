@@ -295,6 +295,11 @@ function setupEventListeners() {
         elements.backupInput.value = '';
         if (file) void importBackup(file);
     });
+    document.querySelector('#markdownImportInput').addEventListener('change', event => {
+        const files = [...event.target.files];
+        event.target.value = '';
+        if (files.length) void importMarkdownNotes(files);
+    });
     elements.deleteCurrentNote.addEventListener('click', deleteCurrentNote);
     document.querySelector('#logoutButton').addEventListener('click', async () => {
         try {
@@ -1626,6 +1631,57 @@ async function importBackup(file, button = document.querySelector('#importBackup
         location.replace('/');
     } catch (error) {
         showMessage(`Não foi possível restaurar o backup: ${error.message}`, 'error');
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
+async function importMarkdownNotes(files, button = document.querySelector('#importMarkdownNotes')) {
+    if (button) button.disabled = true;
+    let imported = 0;
+    const failures = [];
+    try {
+        for (const file of files) {
+            if (!/\.md$/i.test(file.name)) {
+                failures.push(`${file.name}: selecione um arquivo Markdown (.md)`);
+                continue;
+            }
+            const title = file.name.replace(/\.md$/i, '').trim();
+            if (!title) {
+                failures.push(`${file.name}: o nome do arquivo não pode ser vazio`);
+                continue;
+            }
+            try {
+                const content = await file.text();
+                await requestJSON('/api/notes', {
+                    method: 'POST',
+                    body: JSON.stringify({ title, content, folder: '', tags: [] })
+                });
+                imported++;
+            } catch (error) {
+                failures.push(`${file.name}: ${error.message}`);
+            }
+        }
+        if (imported > 0) {
+            invalidateTable();
+            state.offset = 0;
+            await refreshFolderTree();
+            await loadNotes();
+        }
+        if (failures.length) {
+            const details = failures.slice(0, 3).join('; ');
+            const remaining = failures.length - 3;
+            showMessage(
+                `Importadas ${imported} de ${files.length} notas Markdown. ${details}` +
+                (remaining > 0 ? `; e mais ${remaining} falha(s).` : ''),
+                'error'
+            );
+        } else {
+            showMessage(
+                `${imported} ${imported === 1 ? 'nota Markdown importada' : 'notas Markdown importadas'} na raiz.`,
+                'success'
+            );
+        }
     } finally {
         if (button) button.disabled = false;
     }
@@ -3016,6 +3072,33 @@ function renderSettingsPanel() {
     const section = document.createElement('section');
     section.className = 'settings-section';
 
+    const markdownHeading = document.createElement('h3');
+    markdownHeading.textContent = 'Importar notas Markdown';
+
+    const markdownDescription = document.createElement('p');
+    markdownDescription.className = 'settings-description';
+    markdownDescription.textContent = 'Selecione vários arquivos .md para criar uma nota na raiz para cada arquivo. O nome do arquivo será usado como título.';
+
+    const markdownActions = document.createElement('div');
+    markdownActions.className = 'settings-actions';
+
+    const markdownImportButton = document.createElement('button');
+    markdownImportButton.type = 'button';
+    markdownImportButton.id = 'importMarkdownNotes';
+    markdownImportButton.className = 'button';
+    markdownImportButton.dataset.variant = 'muted';
+    markdownImportButton.textContent = 'Importar notas Markdown';
+    markdownImportButton.addEventListener('click', () => {
+        document.querySelector('#markdownImportInput').click();
+    });
+
+    markdownActions.append(markdownImportButton);
+    section.append(markdownHeading, markdownDescription, markdownActions);
+    container.append(section);
+
+    const backupSection = document.createElement('section');
+    backupSection.className = 'settings-section';
+
     const heading = document.createElement('h3');
     heading.textContent = 'Backup e restauração';
 
@@ -3043,8 +3126,8 @@ function renderSettingsPanel() {
     importButton.addEventListener('click', () => elements.backupInput.click());
 
     actions.append(exportButton, importButton);
-    section.append(heading, description, actions);
-    container.append(tasksSection, section);
+    backupSection.append(heading, description, actions);
+    container.append(tasksSection, backupSection);
     elements.panelContent.replaceChildren(container);
 }
 
